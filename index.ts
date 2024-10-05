@@ -20,12 +20,12 @@ const str = (v: Val) => {
     }
 };
 
-const PIN = (val: Val): Val => ({ type: 'PIN', val });
-const LAW = (id: number, arity: number, body: Val): Val => ({
+const PIN = (val: Val | number): Val => ({ type: 'PIN', val: maybeNat(val) });
+const LAW = (id: number, arity: number, body: Val | number): Val => ({
     type: 'LAW',
     id,
     arity,
-    body,
+    body: maybeNat(body),
 });
 const APP = (fn: Val, arg: Val): Val => ({ type: 'APP', fn, arg });
 const NAT = (val: number): Val => ({ type: 'NAT', val });
@@ -34,15 +34,24 @@ const NAT = (val: number): Val => ({ type: 'NAT', val });
 
 // This is "make an APP", or do the subst if we can, immediately.
 // seems like the first case would be an optimization, but it appears not to be?
-const percent = (f: Val, x: Val): Val =>
-    arity(f) === 1 ? subst(f, [x]) : APP(f, x);
+const percent = (f: Val, x: Val): Lazy<Val> =>
+    arity(f) === 1 ? subst(f, cons(just(x), just(null))) : just(APP(f, x));
 
-const arity = (v: Val) => {
+const tell =
+    <T, R>(m: string, f: (v: T) => R) =>
+    (v: T): R => {
+        const res = f(v);
+        // console.log(m, str(v), res);
+        return res;
+    };
+
+const arity = tell('arity', (v: Val) => {
     switch (v.type) {
         case 'APP':
             return arity(v.fn) - 1;
         case 'PIN':
             if (v.val.type === 'NAT') {
+                // console.log('is nat', v.val.val);
                 switch (v.val.val) {
                     case 1:
                     case 3:
@@ -60,23 +69,38 @@ const arity = (v: Val) => {
         case 'NAT':
             return 0;
     }
-};
+});
 
-const pat = (p: Val, l: Val, a: Val, n: Val, x: Val): Val => {
-    switch (x.type) {
-        case 'PIN':
-            return percent(p, x.val);
-        case 'LAW':
-            return percent(
-                percent(percent(l, NAT(x.id)), NAT(x.arity)),
-                x.body,
-            );
-        case 'APP':
-            return percent(percent(a, x.fn), x.arg);
-        case 'NAT':
-            return percent(n, x);
-    }
-};
+const pat = (
+    p: Lazy<Val>,
+    l: Lazy<Val>,
+    a: Lazy<Val>,
+    n: Lazy<Val>,
+    x: Lazy<Val>,
+): Lazy<Val> =>
+    lazy(() => {
+        const xv = x.force();
+        switch (xv.type) {
+            case 'PIN':
+                return percent(p.force(), xv.val);
+            case 'LAW':
+                return lazy(() =>
+                    percent(
+                        percent(
+                            percent(l.force(), NAT(xv.id)).force(),
+                            NAT(xv.arity),
+                        ).force(),
+                        xv.body,
+                    ),
+                );
+            case 'APP':
+                return lazy(() =>
+                    percent(percent(a.force(), xv.fn).force(), xv.arg),
+                );
+            case 'NAT':
+                return lazy(() => percent(n.force(), xv));
+        }
+    });
 
 // kal is for ... variable resolution? I think?
 const kal = (n: number, e: LazyList<Val>, value: Val): Lazy<Val> => {
@@ -114,28 +138,32 @@ const at = <T>(ll: LazyList<T>, n: number): Lazy<T> => {
 };
 
 const toList = <T>(l: LazyList<T>) => {
-    const res: T[] = [];
+    const res: Lazy<T>[] = [];
     let inner = l.force();
     while (inner != null) {
-        res.push(inner.head.force());
+        res.push(inner.head);
         inner = inner.tail.force();
     }
     return res;
 };
 
-const lazy = <v>(f: () => v): Lazy<v> => {
+const lazy = <v>(f: () => v | Lazy<v>): Lazy<v> => {
     let forced = false;
     let value: null | v = null;
     return {
         force: () => {
             if (forced) return value!;
             forced = true;
-            value = f();
+            let inner: Lazy<v> | v = f();
+            while (inner && 'force' in (inner as any)) {
+                inner = (inner as any).force() as any;
+            }
+            value = inner as any;
             return value!;
         },
     };
 };
-const just = <v>(v: v) => lazy(() => v);
+const just = <v>(v: v | Lazy<v>): Lazy<v> => lazy(() => v);
 
 type LLInner<T> = null | { head: Lazy<T>; tail: LazyList<T> };
 type LazyList<T> = Lazy<LLInner<T>>;
@@ -202,6 +230,7 @@ const run = (arity: number, ie: LazyList<Val>, body: Val): Lazy<Val> => {
 // };
 
 const subst = (value: Val, items: LazyList<Val>): Lazy<Val> => {
+    // console.log('sub');
     switch (value.type) {
         case 'APP':
             return subst(value.fn, cons(just(value.arg), items));
@@ -215,9 +244,10 @@ const subst = (value: Val, items: LazyList<Val>): Lazy<Val> => {
     }
 };
 
-const nat = (v: Val) => (v.type === 'NAT' ? v.val : 0);
-
-const rev = ({ head, tail }, ntail) => {};
+const nat = (v: Lazy<Val>) => {
+    let n = v.force();
+    return n.type === 'NAT' ? n.val : 0;
+};
 
 const cons = <T>(head: Lazy<T>, tail: LazyList<T>): LazyList<T> =>
     lazy(() => ({ head, tail }));
@@ -242,12 +272,12 @@ const exec = (value: Val, args: LazyList<Val>): Lazy<Val> => {
             switch (value.val) {
                 case 0:
                     if (vargs.length < 2) throw new Error(`invalid PIN`);
-                    return PIN(vargs[1]);
+                    return PIN(vargs[1].force());
                 case 1:
                     if (vargs.length < 4) throw new Error(`invalid LAW`);
                     const [_, n, a, b] = vargs;
                     if (nat(a) > 0) {
-                        return LAW(nat(n), nat(a), b);
+                        return LAW(nat(n), nat(a), b.force());
                     }
                     throw new Error(`invalid law definition`);
                 case 2:
@@ -257,7 +287,9 @@ const exec = (value: Val, args: LazyList<Val>): Lazy<Val> => {
                     if (vargs.length < 4) throw new Error(`invalid NAT_CASE`);
                     const [_, z, p, x] = vargs;
                     const n = nat(x);
-                    return n === 0 ? z : percent(p, NAT(n - 1));
+                    return n === 0
+                        ? z
+                        : lazy(() => percent(p.force(), NAT(n - 1)));
                 }
                 case 4: {
                     if (vargs.length < 6) throw new Error(`invalid CASE`);
@@ -267,62 +299,74 @@ const exec = (value: Val, args: LazyList<Val>): Lazy<Val> => {
             }
             throw new Error(
                 `invalid exec ${str(value)} with vargs ${vargs
-                    .map(str)
+                    .map((x) => str(x.force()))
                     .join(', ')}`,
             );
         });
     }
     throw new Error(
         `invalid exec ${str(value)} with args ${toList(args)
-            .map(str)
+            .map((x) => str(x.force()))
             .join(', ')}`,
     );
 };
 
-// const E = (value: Val): Val => {
-//     switch (value.type) {
-//         case 'NAT':
-//         case 'PIN':
-//             return value
-//         case 'APP': {
-//             value = {...value, fn:E(value.fn)}
-//             if (A(fn) === 1) {
-//                 // wut?
-//                 value = X(value, value)
-//             }
-//             return value
-//         }
-//         case 'LAW': {
-//             if (value.arity != 0) {
-//                 return value
-//             }
-//             const {id, arity, body} = value
-//             value = '???'
-//             value = R(0, value, body)
-//             return E(value)
-//         }
-//     }
-// }
+const maybeNat = <T>(v: number | T) => (typeof v === 'number' ? NAT(v) : v);
 
-// const X = (value: Val, arg: Val): Val => {
-//     switch (value.type) {
-//         case 'APP':
-//             return X(value.fn, arg)
-//         case 'PIN':
-//             return X(value.val, arg)
-//         case 'LAW':
-//             const {id, arity, body} = value
-//             return R(arity, arg, body)
-//         case 'NAT':
-//             switch (value.val) {
-//                 case 0:
-//                     if (arg.type === 'LAW'){
-//                         const {id, arity, body} = arg
-//                         return {type: 'LAW', id: N(id), arity: N(arity), body: F(body)}
-//                     }
-//                     throw new Error('type error')
-//                 case 1:
+const percents = (...values: (number | Val | Lazy<Val>)[]) => {
+    let res: Lazy<Val> = just(maybeNat(values.shift()!));
+    while (values.length) {
+        res = percent(res.force(), just(maybeNat(values.shift()!)).force());
+    }
+    return res;
+};
 
-//             }
-//     }
-// }
+const pin = PIN(NAT(0));
+const law = PIN(NAT(1));
+const inc = PIN(NAT(2));
+const natCase = PIN(NAT(3));
+const planCase = PIN(NAT(4));
+
+const check = (one: number | Val | Lazy<Val>, two: Val | Lazy<Val>) => {
+    const o = just(maybeNat(one)).force();
+    const t = just(two).force();
+    if (JSON.stringify(o) !== JSON.stringify(t)) {
+        console.error(`not equal`, str(o), 'vs', str(t));
+    } else {
+        console.log('equal', str(o), str(t));
+    }
+};
+const p$ = percents;
+
+const k = p$(law, 0, 2, 1);
+const appHead = p$(planCase, 0, 0, k, 0);
+const toNat = p$(natCase, 0, inc);
+
+// increment, make a law, make a pin
+check(5, percents(inc, 4));
+check(LAW(1, 2, 3), percents(law, 1, 2, 3));
+check(PIN(5), p$(pin, p$(inc, 4)));
+
+// pattern match on nats
+check(9, p$(toNat, 9));
+check(0, p$(toNat, p$(pin, 9)));
+
+// pattern match on PLAN
+check(p$(1, 2), p$(planCase, 1, 0, 0, 0, p$(pin, 2)));
+check(p$(1, 2, 3, 4), p$(planCase, 0, 1, 0, 0, p$(law, 2, 3, 4)));
+check(p$(1, 2, 3), p$(planCase, 0, 0, 1, 0, p$(2, 3)));
+check(p$(1, 2), p$(planCase, 0, 0, 0, 1, 2));
+
+// basic laws
+check(LAW(0, 2, 0), p$(law, 0, 2, 0, 7, 8));
+check(7, p$(law, 0, 2, 1, 7, 8));
+check(8, p$(law, 0, 2, 2, 7, 8));
+check(3, p$(law, 0, 2, 3, 7, 8));
+
+// force a value by using it to build a law and the running it.
+check(1, percents(law, 0, 1, percents(2, 1), 0));
+
+// select finite part of infinite value
+check(1, p$(appHead, p$(law, 99, 1, p$(1, p$(0, 1, 2), 2), 1)));
+
+// check(9, percents(law, 0, 1, 1, 9));

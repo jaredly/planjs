@@ -74,14 +74,16 @@ const opArity = {
 
 // Combinatorsss
 
-/** Something like "getNthArgFromEnd"
+/** AHA: THIS IS: lookup nth value from environment
+ *
+ * Something like "getNthArgFromEnd"
  *
  * f: ends up being a default value, if we don't get `n` to `0`
  *    before we run out of `APP`s
  * e: the value we're digging into
  * n: the amount we still have to dig.
  *
- * so, it's like .. the "first argument" of a multi-arg call?j
+ * the environment is defined as a series of APPs. because why not.
  *
  * 0, APP(f, *)
  * 0, *
@@ -93,11 +95,11 @@ const opArity = {
  * >0, [not app] -> "fallback"
  */
 
-const I = (fallback: Val, expr: Val, nthArgFromEnd: number) => {
-    if (nthArgFromEnd === 0) {
-        return expr[0] === APP ? expr[2] : expr;
+const I = (fallback: Val, env: Val, idx: number) => {
+    if (idx === 0) {
+        return env[0] === APP ? env[2] : env;
     }
-    return expr[0] === APP ? I(fallback, expr[1], nthArgFromEnd - 1) : fallback;
+    return env[0] === APP ? I(fallback, env[1], idx - 1) : fallback;
 };
 
 /** Arity determination
@@ -112,6 +114,7 @@ const A = (o: Val) => {
     switch (o[0]) {
         case PIN:
             // TODO haskell is different
+            // it only allows opcode nats that are pinned.
             return A(o[1]);
         case LAW:
             return o[2];
@@ -120,16 +123,7 @@ const A = (o: Val) => {
             return head === 0 ? 0 : head - 1;
         }
         case NAT: {
-            switch (o[1]) {
-                // TODO I think this is wrong
-                case 0:
-                    return 3;
-                case 1:
-                    return 5;
-                case 2:
-                    return 3;
-            }
-            return 1; // should be 0 probably?
+            return opArity[o[1]] ?? 0;
         }
     }
 };
@@ -149,14 +143,19 @@ e: the function we're pretending to apply
 v: the first arg maybe idk
 b: the second one?
 
-Value * L(Value * n, Value * e, Value * v, Value * b) {
+// HAHHHAA L is Let. It's for LET!!!
+
+// let [n+1] = v in b
+
+Value * L(Value * n, Value * env, Value * val, Value * body) {
     // we make a "hole"
     Value * x = a_Hol();
-    // then we pretend it's the argument to an "apply"
-    Value * f = a_App(e, x);
-    // we then "R"
-    *x = *R(a_Big(Inc(n->n)), f, v);
-    return R(a_Big(Inc(n->n)), f, b);
+    // add it to the environment
+    Value * env_ = a_App(env, x);
+    // evaluate val in env_, toss the result back into x
+    *x = *R(a_Big(Inc(n->n)), env_, val);
+    // evaluate body with env_ now reflecting the dealio.
+    return R(a_Big(Inc(n->n)), env_, body);
 }
 
 n: a number, one larger than the one passed in to "L"
@@ -184,27 +183,46 @@ R is for RUN A LAW
 (e) is the arguments to the law
 (b) is the body.
 
-Value * R(Value * n, Value * env, Value * body){
-  if (body->type == NAT && LTE(body->n, n->n)) {
-    return I(body, env, a_Big(Sub(n->n, body->n)));
-  }
-  if (body->type == APP) {
-    if (body->a.f->type == APP) {
-      if ((body->a.f->a.f->type == NAT) && EQ(body->a.f->a.f->n, d_Nat(0))) {
-        Value * f = body->a.f->a.g;
-        Value * x = body->a.g;
-        return a_App(R(n, env, f), R(n, env, x));
-      }
-      if ((body->a.f->a.f->type == NAT) && EQ(body->a.f->a.f->n, d_Nat(1))) {
-        Value * f = body->a.f->a.g;
-        Value * x = body->a.g;
-        return L(n, env, f, x);
-      }
-    } else if ((body->a.f->type == NAT) && EQ(body->a.f->n, d_Nat(2))) {
-        Value * x = body->a.g;
-        return x;
+Value * R(int arity, Value * env, Value * body){
+
+    // If `body` is a nat within the arity of the law, we just do a lookup in the environment.
+    if (body->type == NAT && LTE(body->n, arity)) {
+        return I(body, env, arity - body);
     }
-  }
-  return b;
+    // If `body` is some other nat, we leave it alone, apparently.
+    // I'm not sure about the implications of this?
+
+    // EDSL HERE! interesting.
+    // If `body` is an APP(APP(0, f), x)
+    // this means we do a "local eval" of both f and x, and then
+    // return APP(f, x)
+
+    // If `body` is an APP(APP(1, v), b)
+    // good news folks, time to do a `let`
+    // we pass in `arity`, because it's the current length of the
+    // environment.
+    // so the "id" of the newly bound variable is going to be arity+1
+
+    // If `body` is APP(2, ?)
+    // it's just the literal ?
+
+    if (body->type == APP) {
+        if (body->a.f->type == APP) {
+            if ((body->a.f->a.f->type == NAT) && EQ(body->a.f->a.f->n, d_Nat(0))) {
+                Value * f = body->a.f->a.g;
+                Value * x = body->a.g;
+                return a_App(R(arity, env, f), R(arity, env, x));
+            }
+            if ((body->a.f->a.f->type == NAT) && EQ(body->a.f->a.f->n, d_Nat(1))) {
+                Value * f = body->a.f->a.g;
+                Value * x = body->a.g;
+                return L(arity, env, f, x);
+            }
+        } else if ((body->a.f->type == NAT) && EQ(body->a.f->n, d_Nat(2))) {
+            Value * x = body->a.g;
+            return x;
+        }
+    }
+    return b;
 }
 */

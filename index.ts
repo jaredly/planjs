@@ -366,6 +366,10 @@ check(3, p$(law, 0, 2, 3, 7, 8));
 // force a value by using it to build a law and the running it.
 check(1, percents(law, 0, 1, percents(2, 1), 0));
 
+const llet = (v: Val, b: Val) => p$(1, v, b);
+const lapp = (fn: Val, arg: Val) => p$(0, fn, arg);
+const lconst = (v: Val) => p$(2, v);
+
 // select finite part of infinite value
 check(1, p$(appHead, p$(law, 99, 1, p$(1, p$(0, 1, 2), 2), 1)));
 

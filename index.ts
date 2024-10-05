@@ -48,7 +48,7 @@ const tell =
 const arity = tell('arity', (v: Val) => {
     switch (v.type) {
         case 'APP':
-            return arity(v.fn) - 1;
+            return Math.max(0, arity(v.fn) - 1);
         case 'PIN':
             if (v.val.type === 'NAT') {
                 // console.log('is nat', v.val.val);

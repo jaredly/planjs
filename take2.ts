@@ -139,7 +139,7 @@ const I = (f: Val, e: Val, n: number) => {
 const A = (v: Val) => {
     switch (v.type) {
         case 'APP':
-            return A(v.fn) - 1;
+            return Math.max(0, A(v.fn) - 1);
         case 'PIN':
             return A(v.val);
         case 'LAW':

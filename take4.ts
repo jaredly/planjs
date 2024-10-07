@@ -2,12 +2,13 @@
 // https://github.com/operating-function/pallas/blob/master/plank/plan.c
 //
 
+import equal from 'fast-deep-equal';
 export {};
 type tPIN = 0;
 type tLAW = 1;
 type tAPP = 2;
 type tNAT = 3;
-type tHOL = 4;
+type tREF = 4;
 type nat = number;
 // immadiate (not lazy)
 type IVal =
@@ -15,27 +16,34 @@ type IVal =
     | [tLAW, nat, nat, Val]
     | [tAPP, Val, Val]
     | [tNAT, nat];
-type Val = IVal | [tHOL, Val[], number];
+type Val = IVal | [tREF, Val[], number];
 
 const PIN: tPIN = 0;
 const LAW: tLAW = 1;
 const APP: tAPP = 2;
 const NAT: tNAT = 3;
-const HOL: tHOL = 4;
+const REF: tREF = 4;
 
-const show = (v: Val): string => {
+const show = (v: Val, trace: Val[] = []): string => {
+    if (trace.includes(v)) {
+        const at = trace.indexOf(v);
+        return `<recurse ^${trace.length - at}>`;
+    }
+    trace = [...trace, v];
+
     switch (v[0]) {
         case PIN:
-            return `<${show(v[1])}>`;
+            return `<${show(v[1], trace)}>`;
         case LAW:
-            return `{${v[1]} ${v[2]} ${show(v[3])}}`;
+            return `{${v[1]} ${v[2]} ${show(v[3], trace)}}`;
         case APP:
-            return `(${appArgs(v).map(show).join(' ')})`;
+            return `(${appArgs(v)
+                .map((m) => show(m, trace))
+                .join(' ')})`;
         case NAT:
             return `${v[1]}@`;
-        case HOL:
-            return `->${v[1].map(show).join(',')} - ${v[2]}`;
-        // return `[${v[1] === null ? 'null' : show(v[1])}]`;
+        case REF:
+            return `[${v[1].map((m) => show(m, trace)).join(', ')}][${v[2]}]`;
     }
 };
 
@@ -55,14 +63,6 @@ const opArity: Record<OPCODE, number> = {
     [OPS.NCASE]: 3,
     [OPS.PCASE]: 5,
 };
-
-// const dig = (v: Val) => {
-//     // while (v[0] === HOL) {
-//     //     if (v[1] == null) throw new Error(`empty hol`);
-//     //     v = v[1];
-//     // }
-//     return v;
-// };
 
 let LOG = false;
 
@@ -147,7 +147,7 @@ const L = (env: Val[], value: Val, body: Val): Val => {
 // Run a Law
 const R = (env: Val[], body: Val): Val => {
     if (body[0] === NAT) {
-        return [HOL, env, body[1]];
+        return [REF, env, body[1]];
         // return I(body, env, env.length - body[1] - 1); // might need another -1?
     }
     if (body[0] === APP) {
@@ -203,7 +203,7 @@ const E = (o: Val): IVal => {
     if (LOG) console.log(`E`, show(o));
     // o = dig(o);
     switch (o[0]) {
-        case HOL: {
+        case REF: {
             const env = o[1];
             if (o[2] >= env.length) return [NAT, o[2]];
             return E(env[o[2]]);
@@ -271,9 +271,20 @@ const appArgs = (val: Val): Val[] => {
     return val[0] === APP ? [...appArgs(val[1]), val[2]] : [val];
 };
 
+const first = (val: Val): Val => {
+    if (val[0] === APP || (val[0] === PIN && val[1][0] === APP))
+        return first(val[1]);
+    return val;
+};
+
 // eXecute(?)
 const X = (target: Val, environment: Val[]): Val => {
-    if (LOG) console.log(`X`, show(target), environment.map(show));
+    if (LOG)
+        console.log(
+            `X`,
+            show(target),
+            environment.map((m) => show(m)),
+        );
     switch (target[0]) {
         case PIN:
             const inner = E(target[1]);
@@ -294,8 +305,8 @@ const X = (target: Val, environment: Val[]): Val => {
             return R(environment, b);
         }
         case APP: {
-            const collapsed = appArgs(target[1]);
-            return X(collapsed[0], environment);
+            // const collapsed = appArgs(target[1]);
+            return X(first(target[1]), environment);
         }
         case NAT: {
             // const args = appArgs(environment).slice(1);
@@ -319,7 +330,7 @@ const chk = (msg: string, x: Val, y: Val) => {
     if (LOG) console.log(`expected`, show(x), `input`, show(y));
     // x = E(x);
     y = E(y);
-    if (JSON.stringify(x) === JSON.stringify(y)) {
+    if (equal(x, y)) {
         console.log(`✅ ${msg}`);
         return;
     }
@@ -365,6 +376,13 @@ chk('basic law (const)', n(3), law(0, 2, 3, 7, 8));
 // (1, v, b) -> (let v in b)
 // (2, x)    -> x
 const lapp = (f: Input, x: Input) => _(0, f, x);
+const lapps = (...args: Input[]) => {
+    let target = asVal(args.shift()!);
+    while (args.length) {
+        target = lapp(target, args.shift()!);
+    }
+    return target;
+};
 const llet = (v: Input, b: Input) => _(1, v, b);
 const lconst = (v: Input) => _(2, v);
 
@@ -387,40 +405,85 @@ chk('arg n stuff', n(8), law(0, 1, llet(1, 2), 8));
 
 chk('a thing', n(7), law(0, 1, llet(3 /*2*/, llet(7 /*3*/, 2)), 9 /*1*/));
 
-// LOG = true;
+LOG = true;
 
-/*
-    chk 7 ( law % 0 % 1 %  --  ? ($0 $1)
-               (1 % 3 %    --  @ $2 = $3
-               (1 % 7 %    --  @ $3 = 9
-               2))         --  $2
-           % 9)
+chk(
+    'more complx',
+    _(1, _(0, 2)),
+    law(
+        0,
+        1, // | ? ($0 $1)
+        _(
+            1,
+            _(0, _(2, 0), 3), // @ $2 = (0 $3)
+            _(
+                1,
+                _(2, 2), // @ $3 = 2
+                _(0, 1, 2), // | ($1 $2)
+            ),
+        ),
+        1, // 1
+    ),
+);
 
-    -- more complex example
-    chk (1%(0%2))
-             (law%0%1%           --   | ? ($0 $1)
-               (1% (0%(2%0)%3)%  --     @ $2 = (0 $3)
-               (1% (2%2)%        --     @ $3 = 2
-                (0%1%2)))%       --     | ($1 $2)
-             1)                  --   1
+LOG = false;
+//  -- more complex example
+//     chk (1%(0%2))
+//              (law%0%1%           --   | ? ($0 $1)
+//                (1% (0%(2%0)%3)%  --     @ $2 = (0 $3)
+//                (1% (2%2)%        --     @ $3 = 2
+//                 (0%1%2)))%       --     | ($1 $2)
+//              1)                  --   1
 
-    -- trivial cycles are okay if not used.
-    chk 7 ( (law % 0 % 1 %  --   | ? ($0 $1)
-              (1% 7%        --     @ $2 = 7
-              (1% 3%        --     @ $3 = $3
-                            --     $2
-               2))%         --   9
-            9))
+chk(
+    'trivial cycles are ok if not used',
+    n(7),
+    _(_(law(0, 1, _(1, 7, _(1, 3, 2)), 9))),
+);
+// -- trivial cycles are okay if not used.
+// chk 7 ( (law % 0 % 1 %  --   | ? ($0 $1)
+//           (1% 7%        --     @ $2 = 7
+//           (1% 3%        --     @ $3 = $3
+//                         --     $2
+//            2))%         --   9
+//         9))
 
-    -- length of array
-    chk 9 (len % (0 % 1 % 2 % 3 % 4 % 5 % 6 % 7 % 8 % 9))
+const z1 = law(0, 1, _(2, 0)); //  --  z1 _ = 0
+const z3 = law(0, 3, _(2, 0)); //  --  z3 _ _ _ = 0
 
-    -- head of closure
-    chk 7   (headF % (7 % 1 % 2 % 3 % 4 % 5 % 6 % 7 % 8 % 9))
-    chk law (headF % (law % 1 % 2))
+const a = (f: Input, x: Input) => _(0, f, x);
+const lenHelp = law(0, 3, lapp(inc(), lapp(1, 2)));
+const len = law(0, 1, lapp(lapp(lapp(pcase(z1, z3), lapp(lenHelp, 0)), z1), 1));
+// const lawE = (n:Input,a:Input,b:Input) => law(n,a,b)
+// a f x = (0 % f % x)
+// lawE n a b = (law % n % a % b)
 
-    -- tag of ADT (head cast to nat)
-    chk 7 (tag % (7 % 1 % 2 % 3 % 4 % 5 % 6 % 7 % 8 % 9))
-    chk 0 (tag % (law % 1 % 2))
+const k3 = law(0, 4, 1);
+const i = law(0, 1, 1);
 
-*/
+// -- length of an array
+// --
+// --     lenHelp len h t = inc (len h)
+// --     len x = planCase z1 z3 (\len h t -> inc (len h))  n x
+// lenHelp = lawE 0 3 (inc `a` (1 `a` 2))
+// len = lawE 0 1 (((planCase % z1 % z3) `a` (lenHelp `a` 0)) `a` z1 `a` 1)
+
+chk('length of array', n(9), _(len, _(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+chk('length of array2', n(0), _(len, 1));
+chk('length of array3', n(1), _(len, _(20, 10)));
+
+// const toNat=_(natCase, 0, inc)
+const head_ = law(0, 3, lapp(1, 2)); //    -- \head h t -> head h
+const headF = law(
+    0,
+    1,
+    lapps(pcase(), lapp(k, 1), lapp(k3, 1), lapp(head_, 0), i, 1),
+);
+const tag = law(0, 1, lapp(toNat(), lapp(headF, 1))); //
+
+chk('head of closure', n(7), _(headF, _(7, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+chk('head law', [PIN, [NAT, LAW]], _(headF, law(1, 2)));
+
+// -- tag of ADT (head cast to nat)
+chk('tag of ADT', n(7), _(tag, _(7, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+chk('tag of ADT law', n(0), _(tag, law(1, 2)));

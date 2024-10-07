@@ -2,6 +2,7 @@
 // https://github.com/operating-function/pallas/blob/master/plank/plan.c
 //
 
+import ansis from 'ansis';
 import equal from 'fast-deep-equal';
 export {};
 type tPIN = 0;
@@ -24,26 +25,40 @@ const APP: tAPP = 2;
 const NAT: tNAT = 3;
 const REF: tREF = 4;
 
+const colors = [
+    ansis.red,
+    ansis.gray,
+    ansis.green,
+    ansis.blue,
+    ansis.yellow,
+    ansis.magenta,
+];
+
 const show = (v: Val, trace: Val[] = []): string => {
     if (trace.includes(v)) {
         const at = trace.indexOf(v);
         return `<recurse ^${trace.length - at}>`;
     }
     trace = [...trace, v];
+    const c = colors[trace.length % colors.length];
 
     switch (v[0]) {
         case PIN:
-            return `<${show(v[1], trace)}>`;
+            return c(`<${show(v[1], trace)}>`);
         case LAW:
-            return `{${v[1]} ${v[2]} ${show(v[3], trace)}}`;
+            return c(`{${v[1]} ${v[2]} ${show(v[3], trace)}}`);
         case APP:
-            return `(${appArgs(v)
-                .map((m) => show(m, trace))
-                .join(' ')})`;
+            return c(
+                `(${appArgs(v)
+                    .map((m) => show(m, trace))
+                    .join(' ')})`,
+            );
         case NAT:
             return `${v[1]}@`;
         case REF:
-            return `[${v[1].map((m) => show(m, trace)).join(', ')}][${v[2]}]`;
+            return `[${v[1]
+                .map((m, i) => `${ansis.red(i + '')}=${show(m, trace)}`)
+                .join(', ')}][${v[2]}]`;
     }
 };
 
@@ -65,40 +80,6 @@ const opArity: Record<OPCODE, number> = {
 };
 
 let LOG = false;
-
-/** AHA: THIS IS: lookup nth value from environment
- *
- * Something like "getNthArgFromEnd"
- *
- * f: ends up being a default value, if we don't get `n` to `0`
- *    before we run out of `APP`s
- * e: the value we're digging into
- * n: the amount we still have to dig.
- *
- * the environment is defined as a series of APPs. because why not.
- *
- * 0, APP(f, *)
- * 0, *
- * 1, APP(APP(f, *), g)
- * 1, APP(*        , g)
- * 2, APP(APP(APP(f, *), g), h)
- * 2, APP(APP(*        , g), h)
- *
- * >0, [not app] -> "fallback"
- */
-
-// const I = (fallback: Val, env: Val[], idx: number): Val => {
-//     if (LOG) console.log(`get the ${idx}th from ${env.map(show).join(', ')}`);
-//     if (idx < env.length) {
-//         return env[Math.max(0, env.length - 1 - idx)];
-//     }
-//     return fallback;
-//     // env = dig(env);
-//     // if (idx === 0) {
-//     //     return env[0] === APP ? env[2] : env;
-//     // }
-//     // return env[0] === APP ? I(fallback, env[1], idx - 1) : fallback;
-// };
 
 /** Arity determination
  *
@@ -140,6 +121,7 @@ const N = (o: Val) => {
 // Let
 const L = (env: Val[], value: Val, body: Val): Val => {
     const x = R(env, value);
+    if (LOG) console.log(`LET ${ansis.red(env.length + '')} = ${show(x)}`);
     env.push(x);
     return R(env, body);
 };
@@ -148,7 +130,6 @@ const L = (env: Val[], value: Val, body: Val): Val => {
 const R = (env: Val[], body: Val): Val => {
     if (body[0] === NAT) {
         return [REF, env, body[1]];
-        // return I(body, env, env.length - body[1] - 1); // might need another -1?
     }
     if (body[0] === APP) {
         const f = F(body[1]);
@@ -192,20 +173,28 @@ const APPS = (target: Input, ...args: Input[]): Val => {
     return target;
 };
 
-// normalize... oh (force?)
+// force (unlazy recursively)
 const F = (o: Val): Val => {
-    // o = dig(E(o));
     o = E(o);
     return o[0] === APP ? [APP, F(o[1]), F(o[2])] : o;
 };
 
 const E = (o: Val): IVal => {
     if (LOG) console.log(`E`, show(o));
-    // o = dig(o);
     switch (o[0]) {
         case REF: {
             const env = o[1];
-            if (o[2] >= env.length) return [NAT, o[2]];
+            if (o[2] >= env.length) {
+                if (LOG)
+                    console.log(`idx out of bound ${o[2]} - env ${env.length}`);
+                return [NAT, o[2]];
+            }
+            if (LOG)
+                console.log(
+                    `getting idx ${o[2]} from env ${env
+                        .map((n, i) => `$${ansis.red(i + '')}=${show(n)}`)
+                        .join(', ')}`,
+                );
             return E(env[o[2]]);
         }
         case PIN:
@@ -263,14 +252,13 @@ const OP_FNS = {
     [OPS.PCASE]: OP_PCASE,
 };
 
+// turn a nested APP(APP(APP(a,b),c),d) into [a,b,c,d]
 const appArgs = (val: Val): Val[] => {
-    // val = E(val);
-    // RSIKY??? idk what is up
     if (val[0] === PIN && val[1][0] === APP) return appArgs(val[1]);
-    // TODO dig val[2]?
     return val[0] === APP ? [...appArgs(val[1]), val[2]] : [val];
 };
 
+// get the "root" of a nested APP
 const first = (val: Val): Val => {
     if (val[0] === APP || (val[0] === PIN && val[1][0] === APP))
         return first(val[1]);
@@ -292,9 +280,6 @@ const X = (target: Val, environment: Val[]): Val => {
                 const f = OP_FNS[inner[1] as OPCODE];
                 const args = environment.slice(1);
                 if (args.length !== f.length) {
-                    // throw new Error(
-                    //     `wrong number of args for op ${inner[1]}: expected ${f.length}, found ${args.length}`,
-                    // );
                     return target;
                 }
                 return f(...(args as [Val, Val, Val, Val, Val]));
@@ -305,22 +290,7 @@ const X = (target: Val, environment: Val[]): Val => {
             return R(environment, b);
         }
         case APP: {
-            // const collapsed = appArgs(target[1]);
             return X(first(target[1]), environment);
-        }
-        case NAT: {
-            // const args = appArgs(environment).slice(1);
-            // if (target[1] in OP_FNS) {
-            //     const f = OP_FNS[target[1] as OPCODE];
-            //     if (args.length !== f.length) {
-            //         throw new Error(
-            //             `wrong number of args for op ${target[1]}: expected ${f.length}, found ${args.length}`,
-            //         );
-            //     }
-            //     return f(...(args as [Val, Val, Val, Val, Val]));
-            // }
-            // throw new Error(`unknown opcode: ${target[1]}`);
-            break;
         }
     }
     return target;
@@ -328,8 +298,7 @@ const X = (target: Val, environment: Val[]): Val => {
 
 const chk = (msg: string, x: Val, y: Val) => {
     if (LOG) console.log(`expected`, show(x), `input`, show(y));
-    // x = E(x);
-    y = E(y);
+    y = F(y);
     if (equal(x, y)) {
         console.log(`✅ ${msg}`);
         return;
@@ -354,9 +323,7 @@ const _ = APPS;
 
 chk('nat', [NAT, 5], inc(4));
 
-// LOG = true;
 chk('law', [LAW, 1, 2, n(3)], law(1, 2, 3));
-// process.exit(1);
 chk('pin', [PIN, n(5)], pin(inc(4)));
 
 chk('ncase', n(9), toNat(n(9)));
@@ -404,8 +371,6 @@ chk('arg 1', n(9), law(0, 1, 1, 9));
 chk('arg n stuff', n(8), law(0, 1, llet(1, 2), 8));
 
 chk('a thing', n(7), law(0, 1, llet(3 /*2*/, llet(7 /*3*/, 2)), 9 /*1*/));
-
-LOG = true;
 
 chk(
     'more complx',

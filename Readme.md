@@ -1,3 +1,4 @@
+# PLAN but make it javascript
 
 To run, I've been using `bun`.
 

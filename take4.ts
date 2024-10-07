@@ -9,18 +9,19 @@ type tAPP = 2;
 type tNAT = 3;
 type tHOL = 4;
 type nat = number;
-type Val =
+// immadiate (not lazy)
+type IVal =
     | [tPIN, Val]
     | [tLAW, nat, nat, Val]
     | [tAPP, Val, Val]
-    | [tNAT, nat]
-    | [tHOL, Val[], Val];
+    | [tNAT, nat];
+type Val = IVal | [tHOL, Val[], number];
 
 const PIN: tPIN = 0;
 const LAW: tLAW = 1;
 const APP: tAPP = 2;
 const NAT: tNAT = 3;
-// const HOL: tHOL = 4;
+const HOL: tHOL = 4;
 
 const show = (v: Val): string => {
     switch (v[0]) {
@@ -32,8 +33,8 @@ const show = (v: Val): string => {
             return `(${appArgs(v).map(show).join(' ')})`;
         case NAT:
             return `${v[1]}@`;
-        // case HOL:
-        //     return
+        case HOL:
+            return `->${v[1].map(show).join(',')} - ${v[2]}`;
         // return `[${v[1] === null ? 'null' : show(v[1])}]`;
     }
 };
@@ -55,13 +56,13 @@ const opArity: Record<OPCODE, number> = {
     [OPS.PCASE]: 5,
 };
 
-const dig = (v: Val) => {
-    // while (v[0] === HOL) {
-    //     if (v[1] == null) throw new Error(`empty hol`);
-    //     v = v[1];
-    // }
-    return v;
-};
+// const dig = (v: Val) => {
+//     // while (v[0] === HOL) {
+//     //     if (v[1] == null) throw new Error(`empty hol`);
+//     //     v = v[1];
+//     // }
+//     return v;
+// };
 
 let LOG = false;
 
@@ -86,18 +87,18 @@ let LOG = false;
  * >0, [not app] -> "fallback"
  */
 
-const I = (fallback: Val, env: Val[], idx: number): Val => {
-    if (LOG) console.log(`get the ${idx}th from ${env.map(show).join(', ')}`);
-    if (idx < env.length) {
-        return env[Math.max(0, env.length - 1 - idx)];
-    }
-    return fallback;
-    // env = dig(env);
-    // if (idx === 0) {
-    //     return env[0] === APP ? env[2] : env;
-    // }
-    // return env[0] === APP ? I(fallback, env[1], idx - 1) : fallback;
-};
+// const I = (fallback: Val, env: Val[], idx: number): Val => {
+//     if (LOG) console.log(`get the ${idx}th from ${env.map(show).join(', ')}`);
+//     if (idx < env.length) {
+//         return env[Math.max(0, env.length - 1 - idx)];
+//     }
+//     return fallback;
+//     // env = dig(env);
+//     // if (idx === 0) {
+//     //     return env[0] === APP ? env[2] : env;
+//     // }
+//     // return env[0] === APP ? I(fallback, env[1], idx - 1) : fallback;
+// };
 
 /** Arity determination
  *
@@ -107,19 +108,19 @@ const I = (fallback: Val, env: Val[], idx: number): Val => {
  *      > if the function cannot be applied, it probably ought to error
  * Nat: if it's an opcode, then the arity of the primop. otherwise *should* be 0
  */
-const A = (o: Val): number => {
-    o = dig(o);
+const A = (o: IVal): number => {
     switch (o[0]) {
         case PIN:
-            const p = dig(o[1]);
+            const p = o[1];
             if (p[0] === NAT) {
                 return opArity[p[1] as 0] ?? 1;
             }
-            return A(o[1]);
+            return A(E(o[1]));
         case LAW:
             return o[2];
         case APP: {
-            const head = A(o[1]);
+            // NOTE: is this good here?
+            const head = A(E(o[1]));
             return head === 0 ? 0 : head - 1;
         }
         case NAT: {
@@ -130,7 +131,6 @@ const A = (o: Val): number => {
 
 // asNat
 const N = (o: Val) => {
-    o = dig(o);
     const norm = E(o);
     if (norm[0] === NAT) return norm[1];
     return 0;
@@ -140,24 +140,24 @@ const N = (o: Val) => {
 // Let
 const L = (env: Val[], value: Val, body: Val): Val => {
     const x = R(env, value);
-    env.unshift(x);
+    env.push(x);
     return R(env, body);
 };
 
 // Run a Law
 const R = (env: Val[], body: Val): Val => {
-    body = dig(body);
-    if (body[0] === NAT && body[1] <= env.length) {
-        return I(body, env, env.length - body[1] - 1); // might need another -1?
+    if (body[0] === NAT) {
+        return [HOL, env, body[1]];
+        // return I(body, env, env.length - body[1] - 1); // might need another -1?
     }
     if (body[0] === APP) {
-        const f = dig(body[1]);
-        const g = dig(body[2]);
+        const f = F(body[1]);
+        const g = F(body[2]);
         // APP(f,                     g)
         // APP(APP(f_inner, g_inner), g)
         if (f[0] === APP) {
-            const f_inner = dig(f[1]);
-            const g_inner = dig(f[2]);
+            const f_inner = F(f[1]);
+            const g_inner = F(f[2]);
             if (f_inner[0] === NAT) {
                 // (f x)
                 if (f_inner[1] === 0) {
@@ -194,14 +194,20 @@ const APPS = (target: Input, ...args: Input[]): Val => {
 
 // normalize... oh (force?)
 const F = (o: Val): Val => {
-    o = dig(E(o));
+    // o = dig(E(o));
+    o = E(o);
     return o[0] === APP ? [APP, F(o[1]), F(o[2])] : o;
 };
 
-const E = (o: Val): Val => {
+const E = (o: Val): IVal => {
     if (LOG) console.log(`E`, show(o));
-    o = dig(o);
+    // o = dig(o);
     switch (o[0]) {
+        case HOL: {
+            const env = o[1];
+            if (o[2] >= env.length) return [NAT, o[2]];
+            return E(env[o[2]]);
+        }
         case PIN:
             return o;
         case LAW:
@@ -209,17 +215,14 @@ const E = (o: Val): Val => {
             const b = o[3];
             const env: Val[] = [];
             const res = R(env, b);
-            env.unshift(res);
+            env.push(res);
             return E(res);
         case APP:
-            o = [APP, E(o[1]), o[2]];
-            // if (A(o[1]) === 1) {
-            //     if (o[1][0] === PIN && o[1][1][0] === LAW) {
-            //     }
-            // }
-            const items = appArgs(E(o[1]));
+            const target = E(o[1]);
+            o = [APP, target, o[2]];
+            const items = appArgs(target);
             items.push(o[2]);
-            return A(o[1]) === 1 ? E(X(o, items)) : o;
+            return A(target) === 1 ? E(X(o, items)) : o;
         case NAT:
             return o;
     }
@@ -239,7 +242,7 @@ const OP_NCASE = (z: Val, p: Val, x: Val): Val => {
 };
 
 const OP_PCASE = (p: Val, l: Val, a: Val, n: Val, x: Val): Val => {
-    x = dig(E(x));
+    x = E(x);
     switch (x[0]) {
         case PIN:
             return APPS(p, x[1]);
@@ -261,7 +264,7 @@ const OP_FNS = {
 };
 
 const appArgs = (val: Val): Val[] => {
-    val = dig(val);
+    // val = E(val);
     // RSIKY??? idk what is up
     if (val[0] === PIN && val[1][0] === APP) return appArgs(val[1]);
     // TODO dig val[2]?
@@ -271,10 +274,9 @@ const appArgs = (val: Val): Val[] => {
 // eXecute(?)
 const X = (target: Val, environment: Val[]): Val => {
     if (LOG) console.log(`X`, show(target), environment.map(show));
-    target = dig(target);
     switch (target[0]) {
         case PIN:
-            const inner = dig(target[1]);
+            const inner = E(target[1]);
             if (inner[0] === NAT) {
                 const f = OP_FNS[inner[1] as OPCODE];
                 const args = environment.slice(1);

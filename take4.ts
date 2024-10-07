@@ -14,13 +14,13 @@ type Val =
     | [tLAW, nat, nat, Val]
     | [tAPP, Val, Val]
     | [tNAT, nat]
-    | [tHOL, Val | null];
+    | [tHOL, Val[], Val];
 
 const PIN: tPIN = 0;
 const LAW: tLAW = 1;
 const APP: tAPP = 2;
 const NAT: tNAT = 3;
-const HOL: tHOL = 4;
+// const HOL: tHOL = 4;
 
 const show = (v: Val): string => {
     switch (v[0]) {
@@ -32,8 +32,9 @@ const show = (v: Val): string => {
             return `(${appArgs(v).map(show).join(' ')})`;
         case NAT:
             return `${v[1]}@`;
-        case HOL:
-            return `[${v[1] === null ? 'null' : show(v[1])}]`;
+        // case HOL:
+        //     return
+        // return `[${v[1] === null ? 'null' : show(v[1])}]`;
     }
 };
 
@@ -55,10 +56,10 @@ const opArity: Record<OPCODE, number> = {
 };
 
 const dig = (v: Val) => {
-    while (v[0] === HOL) {
-        if (v[1] == null) throw new Error(`empty hol`);
-        v = v[1];
-    }
+    // while (v[0] === HOL) {
+    //     if (v[1] == null) throw new Error(`empty hol`);
+    //     v = v[1];
+    // }
     return v;
 };
 
@@ -138,10 +139,8 @@ const N = (o: Val) => {
 
 // Let
 const L = (env: Val[], value: Val, body: Val): Val => {
-    const x: Val = [HOL, null];
-    // const env_: Val = [APP, env, x];
-    env.push(x);
-    x[1] = R(env, value);
+    const x = R(env, value);
+    env.unshift(x);
     return R(env, body);
 };
 
@@ -208,9 +207,10 @@ const E = (o: Val): Val => {
         case LAW:
             if (o[2] !== 0) return o;
             const b = o[3];
-            o = [HOL, null];
-            // hrmmmmm
-            return E(R([], b));
+            const env: Val[] = [];
+            const res = R(env, b);
+            env.unshift(res);
+            return E(res);
         case APP:
             o = [APP, E(o[1]), o[2]];
             // if (A(o[1]) === 1) {

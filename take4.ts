@@ -14,7 +14,7 @@ type Val =
     | [tLAW, nat, nat, Val]
     | [tAPP, Val, Val]
     | [tNAT, nat]
-    | [tHOL];
+    | [tHOL, Val | null];
 
 const PIN: tPIN = 0;
 const LAW: tLAW = 1;
@@ -30,7 +30,8 @@ const OPS = {
     PCASE: 4,
 } as const;
 
-const opArity: Record<(typeof OPS)[keyof typeof OPS], number> = {
+type OPCODE = (typeof OPS)[keyof typeof OPS];
+const opArity: Record<OPCODE, number> = {
     [OPS.PIN]: 1,
     [OPS.LAW]: 3,
     [OPS.INC]: 1,
@@ -38,41 +39,13 @@ const opArity: Record<(typeof OPS)[keyof typeof OPS], number> = {
     [OPS.PCASE]: 5,
 };
 
-// typedef struct Nat {
-//   NatType type;
-//   union {
-//     u64 direct;
-//     struct {
-//       u64 size;
-//       u64 *buf;
-//     };
-//   };
-// } Nat;
-
-// struct Value;
-
-// typedef struct Law {
-//   Nat n;
-//   Nat a;
-//   struct Value * b;
-// } Law;
-
-// typedef struct App {
-//   struct Value * f;
-//   struct Value * g;
-// } App;
-
-// typedef struct Value {
-//   Type type;
-//   union {
-//     struct Value * p;
-//     Law l;
-//     App a;
-//     Nat n;
-//   };
-// } Value;
-
-// Combinatorsss
+const dig = (v: Val) => {
+    while (v[0] === HOL) {
+        if (v[1] == null) throw new Error(`empty hol`);
+        v = v[1];
+    }
+    return v;
+};
 
 /** AHA: THIS IS: lookup nth value from environment
  *
@@ -96,6 +69,7 @@ const opArity: Record<(typeof OPS)[keyof typeof OPS], number> = {
  */
 
 const I = (fallback: Val, env: Val, idx: number): Val => {
+    env = dig(env);
     if (idx === 0) {
         return env[0] === APP ? env[2] : env;
     }
@@ -111,6 +85,7 @@ const I = (fallback: Val, env: Val, idx: number): Val => {
  * Nat: if it's an opcode, then the arity of the primop. otherwise *should* be 0
  */
 const A = (o: Val): number => {
+    o = dig(o);
     switch (o[0]) {
         case PIN:
             // TODO haskell is different
@@ -130,102 +105,153 @@ const A = (o: Val): number => {
 
 // asNat
 const N = (o: Val) => {
+    o = dig(o);
     const norm = E(o);
     if (norm[0] === NAT) return norm[1];
     throw new Error(`not a nat`);
 };
 
-// const L = (n: Val, e: Val, v: Val, b: Val): Val => {};
+// Let
+const L = (envSize: number, env: Val, value: Val, body: Val): Val => {
+    const x: Val = [HOL, null];
+    const env_: Val = [APP, env, x];
+    x[1] = R(envSize + 1, env_, value);
+    return R(envSize + 1, env_, body);
+};
 
-/*
-n: some number
-e: the function we're pretending to apply
-v: the first arg maybe idk
-b: the second one?
-
-// HAHHHAA L is Let. It's for LET!!!
-
-// let [n+1] = v in b
-
-Value * L(Value * n, Value * env, Value * val, Value * body) {
-    // we make a "hole"
-    Value * x = a_Hol();
-    // add it to the environment
-    Value * env_ = a_App(env, x);
-    // evaluate val in env_, toss the result back into x
-    *x = *R(a_Big(Inc(n->n)), env_, val);
-    // evaluate body with env_ now reflecting the dealio.
-    return R(a_Big(Inc(n->n)), env_, body);
-}
-
-// ahhh ok so we're lazy folks. very lazy.
-// this ... is a
-
-n: a number, one larger than the one passed in to "L"
-e: the APP that may or may not have a hole as the arg
-b: who knows
-
-
-IF b is a number and <= n:
-    we return the (n - b)th argument from the end of (e)
-IF b is a number > n:
-    we return b??? is this some weird fallthrough
-IF b is of the form APP(APP(f, g), h)
-    if f is NAT(0)
-        // is this, logically, "apply the Nth - g argument of e to the "
-        return APP(R(n, e, g), R(n, e, h))
-    if f is NAT(1)
-        return L(n, e, f, x) <- we recurse back into "L" for something
-IF b is of the form APP(2, g)
-    return g
-otherwise return b
-
-WAITWAIT
-R is for RUN A LAW
-(n) is the arity of the law
-(e) is the arguments to the law
-(b) is the body.
-
-Value * R(int arity, Value * env, Value * body){
-
-    // If `body` is a nat within the arity of the law, we just do a lookup in the environment.
-    if (body->type == NAT && LTE(body->n, arity)) {
-        return I(body, env, arity - body);
+// Run a Law
+const R = (envSize: number, env: Val, body: Val): Val => {
+    body = dig(body);
+    if (body[0] === NAT && body[1] <= envSize) {
+        return I(body, env, envSize - body[1]);
     }
-    // If `body` is some other nat, we leave it alone, apparently.
-    // I'm not sure about the implications of this?
-
-    // EDSL HERE! interesting.
-    // If `body` is an APP(APP(0, f), x)
-    // this means we do a "local eval" of both f and x, and then
-    // return APP(f, x)
-
-    // If `body` is an APP(APP(1, v), b)
-    // good news folks, time to do a `let`
-    // we pass in `arity`, because it's the current length of the
-    // environment.
-    // so the "id" of the newly bound variable is going to be arity+1
-
-    // If `body` is APP(2, ?)
-    // it's just the literal ?
-
-    if (body->type == APP) {
-        if (body->a.f->type == APP) {
-            if ((body->a.f->a.f->type == NAT) && EQ(body->a.f->a.f->n, d_Nat(0))) {
-                Value * f = body->a.f->a.g;
-                Value * x = body->a.g;
-                return a_App(R(arity, env, f), R(arity, env, x));
+    if (body[0] === APP) {
+        const f = dig(body[1]);
+        const g = dig(body[2]);
+        // APP(f,                     g)
+        // APP(APP(f_inner, g_inner), g)
+        if (f[0] === APP) {
+            const f_inner = dig(f[1]);
+            const g_inner = dig(f[2]);
+            if (f_inner[0] === NAT) {
+                // (f x)
+                if (f_inner[1] === 0) {
+                    const f = g_inner;
+                    const x = g;
+                    return [APP, R(envSize, env, f), R(envSize, env, x)];
+                }
+                // (let v in b)
+                if (f_inner[1] === 1) {
+                    const v = g_inner;
+                    const b = g;
+                    return L(envSize, env, v, b);
+                }
             }
-            if ((body->a.f->a.f->type == NAT) && EQ(body->a.f->a.f->n, d_Nat(1))) {
-                Value * f = body->a.f->a.g;
-                Value * x = body->a.g;
-                return L(arity, env, f, x);
-            }
-        } else if ((body->a.f->type == NAT) && EQ(body->a.f->n, d_Nat(2))) {
-            Value * x = body->a.g;
-            return x;
+        }
+        if (f[0] === NAT && f[1] === 2) {
+            return g;
         }
     }
-    return b;
-}
-*/
+
+    return body;
+};
+
+const APPS = (target: Val, ...args: Val[]): Val => {
+    while (args.length) {
+        target = [APP, target, args.shift()!];
+    }
+    return target;
+};
+
+// normalize...
+const F = (o: Val): Val => {
+    o = dig(E(o));
+    return o[0] === APP ? [APP, F(o[1]), F(o[2])] : o;
+};
+
+const E = (o: Val): Val => {
+    o = dig(o);
+    switch (o[0]) {
+        case PIN:
+            return E(o[1]);
+        case LAW:
+            if (o[2] !== 0) return o;
+            const b = o[3];
+            o = [HOL, null];
+            return E(R(0, o, b));
+        case APP:
+            o = [APP, E(o[1]), o[2]];
+            return E(A(o[1]) === 1 ? X(o, o) : o);
+        case NAT:
+            return o;
+    }
+};
+
+const OP_PIN = (x: Val): Val => [PIN, F(x)];
+
+const OP_LAW = (n: Val, a: Val, b: Val): Val => [LAW, N(n), N(a), F(b)];
+
+const OP_INC = (n: Val): Val => [NAT, N(n) + 1];
+
+const OP_NCASE = (z: Val, p: Val, x: Val): Val => {
+    const n = N(x);
+    return n === 0 ? z : APPS(p, [NAT, n - 1]);
+};
+
+const OP_PCASE = (p: Val, l: Val, a: Val, n: Val, x: Val): Val => {
+    x = dig(x);
+    switch (x[0]) {
+        case PIN:
+            return APPS(p, x[1]);
+        case LAW:
+            return APPS(l, [NAT, x[1]], [NAT, x[2]], x[3]);
+        case APP:
+            return APPS(a, x[1], x[2]);
+        case NAT:
+            return APPS(n, x);
+    }
+};
+
+const OP_FNS = {
+    [OPS.PIN]: OP_PIN,
+    [OPS.LAW]: OP_LAW,
+    [OPS.INC]: OP_INC,
+    [OPS.NCASE]: OP_NCASE,
+    [OPS.PCASE]: OP_PCASE,
+};
+
+const appArgs = (val: Val): Val[] => {
+    val = dig(val);
+    // TODO dig val[2]?
+    return val[0] === APP ? [...appArgs(val[1]), val[2]] : [val];
+};
+
+// eXecute(?)
+const X = (target: Val, environment: Val): Val => {
+    target = dig(target);
+    switch (target[0]) {
+        case PIN:
+            return X(target[1], environment);
+        case LAW: {
+            const [_, __, a, b] = target;
+            return R(a, environment, b);
+        }
+        case APP:
+            return X(target[1], environment);
+        case NAT: {
+            const args = appArgs(environment);
+            if (target[1] in OP_FNS) {
+                const f = OP_FNS[target[1] as OPCODE];
+                if (args.length !== f.length + 1) {
+                    throw new Error(
+                        `wrong number of args for op ${target[1]}: expected ${
+                            f.length + 1
+                        }, found ${args.length}`,
+                    );
+                }
+                return f(...(args as [Val, Val, Val, Val, Val]));
+            }
+            throw new Error(`unknown opcode: ${target[1]}`);
+        }
+    }
+};

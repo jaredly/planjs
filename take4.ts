@@ -62,6 +62,8 @@ const dig = (v: Val) => {
     return v;
 };
 
+let LOG = false;
+
 /** AHA: THIS IS: lookup nth value from environment
  *
  * Something like "getNthArgFromEnd"
@@ -174,9 +176,10 @@ const R = (envSize: number, env: Val, body: Val): Val => {
     return body;
 };
 
-const asVal = (v: Val | number): Val => (typeof v === 'number' ? [NAT, v] : v);
+type Input = Val | number;
+const asVal = (v: Input): Val => (typeof v === 'number' ? [NAT, v] : v);
 
-const APPS = (target: Val | number, ...args: (Val | number)[]): Val => {
+const APPS = (target: Input, ...args: Input[]): Val => {
     target = asVal(target);
     while (args.length) {
         target = [APP, target, asVal(args.shift()!)];
@@ -184,14 +187,14 @@ const APPS = (target: Val | number, ...args: (Val | number)[]): Val => {
     return target;
 };
 
-// normalize...
+// normalize... oh (force?)
 const F = (o: Val): Val => {
     o = dig(E(o));
     return o[0] === APP ? [APP, F(o[1]), F(o[2])] : o;
 };
 
 const E = (o: Val): Val => {
-    console.log(`E`, show(o));
+    if (LOG) console.log(`E`, show(o));
     o = dig(o);
     switch (o[0]) {
         case PIN:
@@ -203,13 +206,19 @@ const E = (o: Val): Val => {
             return E(R(0, o, b));
         case APP:
             o = [APP, E(o[1]), o[2]];
+            // if (A(o[1]) === 1) {
+            //     if (o[1][0] === PIN && o[1][1][0] === LAW) {
+            //     }
+            // }
             return A(o[1]) === 1 ? E(X(o, o)) : o;
         case NAT:
             return o;
     }
 };
 
-const OP_PIN = (x: Val): Val => (console.log('PIN', show(x)), [PIN, F(x)]);
+const OP_PIN = (x: Val): Val => (
+    LOG && console.log('PIN', show(x)), [PIN, F(x)]
+);
 
 const OP_LAW = (n: Val, a: Val, b: Val): Val => [LAW, N(n), N(a), F(b)];
 
@@ -221,7 +230,7 @@ const OP_NCASE = (z: Val, p: Val, x: Val): Val => {
 };
 
 const OP_PCASE = (p: Val, l: Val, a: Val, n: Val, x: Val): Val => {
-    x = dig(x);
+    x = dig(E(x));
     switch (x[0]) {
         case PIN:
             return APPS(p, x[1]);
@@ -244,40 +253,59 @@ const OP_FNS = {
 
 const appArgs = (val: Val): Val[] => {
     val = dig(val);
+    // RSIKY??? idk what is up
+    if (val[0] === PIN && val[1][0] === APP) return appArgs(val[1]);
     // TODO dig val[2]?
     return val[0] === APP ? [...appArgs(val[1]), val[2]] : [val];
 };
 
 // eXecute(?)
 const X = (target: Val, environment: Val): Val => {
-    console.log(`X`, show(target), show(environment));
+    if (LOG) console.log(`X`, show(target), show(environment));
     target = dig(target);
     switch (target[0]) {
         case PIN:
+            const inner = dig(target[1]);
+            if (inner[0] === NAT) {
+                const f = OP_FNS[inner[1] as OPCODE];
+                const args = appArgs(environment).slice(1);
+                if (args.length !== f.length) {
+                    // throw new Error(
+                    //     `wrong number of args for op ${inner[1]}: expected ${f.length}, found ${args.length}`,
+                    // );
+                    return target;
+                }
+                return f(...(args as [Val, Val, Val, Val, Val]));
+            }
             return X(target[1], environment);
         case LAW: {
             const [_, __, a, b] = target;
             return R(a, environment, b);
         }
-        case APP:
-            return X(target[1], environment);
+        case APP: {
+            const collapsed = appArgs(target[1]);
+            return X(collapsed[0], environment);
+        }
         case NAT: {
-            const args = appArgs(environment).slice(1);
-            if (target[1] in OP_FNS) {
-                const f = OP_FNS[target[1] as OPCODE];
-                if (args.length !== f.length) {
-                    throw new Error(
-                        `wrong number of args for op ${target[1]}: expected ${f.length}, found ${args.length}`,
-                    );
-                }
-                return f(...(args as [Val, Val, Val, Val, Val]));
-            }
-            throw new Error(`unknown opcode: ${target[1]}`);
+            // const args = appArgs(environment).slice(1);
+            // if (target[1] in OP_FNS) {
+            //     const f = OP_FNS[target[1] as OPCODE];
+            //     if (args.length !== f.length) {
+            //         throw new Error(
+            //             `wrong number of args for op ${target[1]}: expected ${f.length}, found ${args.length}`,
+            //         );
+            //     }
+            //     return f(...(args as [Val, Val, Val, Val, Val]));
+            // }
+            // throw new Error(`unknown opcode: ${target[1]}`);
+            break;
         }
     }
+    return target;
 };
 
 const chk = (msg: string, x: Val, y: Val) => {
+    if (LOG) console.log(`expected`, show(x), `input`, show(y));
     // x = E(x);
     y = E(y);
     if (JSON.stringify(x) === JSON.stringify(y)) {
@@ -293,12 +321,14 @@ const mapp =
         APPS(op, ...args);
 
 const n = (n: number): Val => [NAT, n];
-const inc = mapp(OPS.INC);
-const law = mapp(OPS.LAW);
-const pin = mapp(OPS.PIN);
-const ncase = mapp(OPS.NCASE);
-const pcase = mapp(OPS.PCASE);
+const inc = mapp([PIN, n(OPS.INC)]);
+const law = mapp([PIN, n(OPS.LAW)]);
+const pin = mapp([PIN, n(OPS.PIN)]);
+const ncase = mapp([PIN, n(OPS.NCASE)]);
+const pcase = mapp([PIN, n(OPS.PCASE)]);
 const toNat = mapp(ncase(n(0), inc()));
+
+const _ = APPS;
 
 chk('nat', [NAT, 5], inc(4));
 chk('law', [LAW, 1, 2, n(3)], law(1, 2, 3));
@@ -308,91 +338,44 @@ chk('ncase', n(9), toNat(n(9)));
 chk('ncase2', n(0), toNat(pin(n(9))));
 
 chk('P___', APPS(1, 2), pcase(1, 0, 0, 0, pin(2)));
-// chk('P___', APPS(2, 3, 4), pcase(0, 1, 0, 0, law(2, 3, 4)));
+chk('_L__', APPS(1, 2, 3, 4), pcase(0, 1, 0, 0, law(2, 3, 4)));
+chk('__A_', _(1, 2, 3), pcase(0, 0, 1, 0, _(2, 3)));
+chk('___N', _(1, 2), pcase(0, 0, 0, 1, 2));
+
+chk('basic law (self)', [LAW, 0, 2, n(0)], law(0, 2, 0, 7, 8));
+chk('basic law (arg 1)', n(7), law(0, 2, 1, 7, 8));
+chk('basic law (arg 2)', n(8), law(0, 2, 2, 7, 8));
+chk('basic law (const)', n(3), law(0, 2, 3, 7, 8));
+
+// (0, f, x) -> (f x)
+// (1, v, b) -> (let v in b)
+// (2, x)    -> x
+const lapp = (f: Input, x: Input) => _(0, f, x);
+const llet = (v: Input, b: Input) => _(1, v, b);
+const lconst = (v: Input) => _(2, v);
+
+chk('law dsl CONST', n(32), law(0, 1, lconst(32), 0));
+
+const k = law(0, 2, 1);
+const appHead = mapp(pcase(0, 0, k, 0));
+chk('apphead', n(200), appHead(_(200, 3)));
+chk('first of inf', n(100), appHead(law(99, 1, llet(lapp(1, 2), 2), 100)));
+
+chk('pinlaw', [LAW, 1, 2, n(0)], pin(LAW, 1, 2, 0));
+chk('pinlaw2', [LAW, 1, 2, n(0)], pin(law(1), 2, 0));
+chk('pinlaw3', [PIN, [LAW, 1, 2, n(0)]], pin(law(1, 2, 0), 3, 4));
+// HMMM is this supposed to collapse?
+// chk('pinlaw4', [PIN, [LAW, 1, 2, n(0)]], pin(pin(law(1, 2, 0)), 3, 4));
+chk('pinlaw4', [PIN, [PIN, [LAW, 1, 2, n(0)]]], pin(pin(law(1, 2, 0)), 3, 4));
+
+chk('arg 1', n(9), law(0, 1, 1, 9));
+chk('arg n stuff', n(8), law(0, 1, llet(1, 2), 8));
+
+chk('a thing', n(7), law(0, 1, llet(3 /*2*/, llet(7 /*3*/, 2)), 9 /*1*/));
+
+// LOG = true;
 
 /*
-pin=(PIN 0)
-law=(PIN 1)
-inc=(PIN 2)
-natCase=(PIN 3)
-planCase=(PIN 4)
-
-k  = law % 0 % 2 % 1        --  k a _ = a
-k3 = law % 0 % 4 % 1        --  k3 v _ _ _ = v
-i  = law % 0 % 1 % 1        --  i x = x
-z1 = law % 0 % 1 % (2 % 0)  --  z1 _ = 0
-z3 = law % 0 % 3 % (2 % 0)  --  z3 _ _ _ = 0
-
-appHead=(planCase % 0 % 0 % k % 0)
-toNat=(natCase % 0 % inc)
-dec=(natCase % 0 % i)
-
--- helpers for building laws
-a f x = (0 % f % x)
-lawE n a b = (law % n % a % b)
-
--- length of an array
---
---     lenHelp len h t = inc (len h)
---     len x = planCase z1 z3 (\len h t -> inc (len h))  n x
-lenHelp = lawE 0 3 (inc `a` (1 `a` 2))
-len = lawE 0 1 (((planCase % z1 % z3) `a` (lenHelp `a` 0)) `a` z1 `a` 1)
-
--- getting the tag of an ADT:
---
--- head (APP h t) = h
--- head x         = x
---
--- tag x = toNat (head x)
-head' = lawE 0 3 (1 `a` 2)    -- \head h t -> head h
-headF = lawE 0 1 (planCase `a` (k `a` 1) `a` (k3 `a` 1) `a` (head' `a` 0) `a` i `a` 1)
-tag   = lawE 0 1 (toNat `a` (headF `a` 1))
-
-chk :: Val -> Val -> IO ()
-chk x y = do
-    putStrLn ("assert " <> show x <> " " <> show y)
-    if (x == y) then pure () else error "FAIL"
-
-deriving instance Eq Val
-
-main = do
-    -- increment, make a law, make a pin
-    chk 5           $ inc % 4
-    chk (LAW 1 2 3) $ law % 1 % 2 % 3
-    chk (PIN 5)     $ pin % (inc % 4)
-
-    -- pattern match on nats
-    chk 9 $ toNat % 9
-
-    chk 0 $ toNat % (pin % 9)
-
-    -- pattern match on PLAN values
-    chk (1%2)     (planCase % 1 % 0 % 0 % 0 % (pin%2))
-    chk (1%2%3%4) (planCase % 0 % 1 % 0 % 0 % (law%2%3%4))
-    chk (1%2%3)   (planCase % 0 % 0 % 1 % 0 % (2%3))
-    chk (1%2)     (planCase % 0 % 0 % 0 % 1 % 2)
-
-    -- basic laws
-    chk (LAW 0 2 0) $ law % 0 % 2 % 0 % 7 % 8
-    chk 7           $ law % 0 % 2 % 1 % 7 % 8
-    chk 8           $ law % 0 % 2 % 2 % 7 % 8
-    chk 3           $ law % 0 % 2 % 3 % 7 % 8
-
-    -- force a value by using it to build a law and the running it.
-    chk 1 (law % 0 % 1 % (2 % 1) % 0)
-
-    -- select finite part of infinite value
-    chk 1 (appHead % (law % 99 % 1 % (1 % (0%1%2) % 2) % 1))
-
-    -- running pins:
-    chk (LAW 1 2 0)      $ pin % law % 1 % 2 % 0
-    chk (LAW 1 2 0)      $ pin % (law%1) % 2 % 0
-    chk (PIN(LAW 1 2 0)) $ pin % (law%1%2%0) % 3 % 4
-    chk (PIN(LAW 1 2 0)) $ pin % (pin % (law%1%2%0)) % 3 % 4
-
-    chk 9 ( law % 0 % 1 % 1 % 9 )
-    chk 8 ( law % 0 % 1 % (1 % 1 % 2) % 8 )
-
     chk 7 ( law % 0 % 1 %  --  ? ($0 $1)
                (1 % 3 %    --  @ $2 = $3
                (1 % 7 %    --  @ $3 = 9

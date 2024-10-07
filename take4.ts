@@ -103,8 +103,10 @@ const A = (o: Val): number => {
     o = dig(o);
     switch (o[0]) {
         case PIN:
-            // TODO haskell is different
-            // it only allows opcode nats that are pinned.
+            const p = dig(o[1]);
+            if (p[0] === NAT) {
+                return opArity[p[1] as 0] ?? 1;
+            }
             return A(o[1]);
         case LAW:
             return o[2];
@@ -113,7 +115,7 @@ const A = (o: Val): number => {
             return head === 0 ? 0 : head - 1;
         }
         case NAT: {
-            return opArity[o[1] as 0] ?? 0;
+            return 0; // opArity[o[1] as 0] ?? 0;
         }
     }
 };

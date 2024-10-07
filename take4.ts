@@ -85,12 +85,17 @@ let LOG = false;
  * >0, [not app] -> "fallback"
  */
 
-const I = (fallback: Val, env: Val, idx: number): Val => {
-    env = dig(env);
-    if (idx === 0) {
-        return env[0] === APP ? env[2] : env;
+const I = (fallback: Val, env: Val[], idx: number): Val => {
+    if (LOG) console.log(`get the ${idx}th from ${env.map(show).join(', ')}`);
+    if (idx < env.length) {
+        return env[Math.max(0, env.length - 1 - idx)];
     }
-    return env[0] === APP ? I(fallback, env[1], idx - 1) : fallback;
+    return fallback;
+    // env = dig(env);
+    // if (idx === 0) {
+    //     return env[0] === APP ? env[2] : env;
+    // }
+    // return env[0] === APP ? I(fallback, env[1], idx - 1) : fallback;
 };
 
 /** Arity determination
@@ -132,18 +137,19 @@ const N = (o: Val) => {
 };
 
 // Let
-const L = (envSize: number, env: Val, value: Val, body: Val): Val => {
+const L = (env: Val[], value: Val, body: Val): Val => {
     const x: Val = [HOL, null];
-    const env_: Val = [APP, env, x];
-    x[1] = R(envSize + 1, env_, value);
-    return R(envSize + 1, env_, body);
+    // const env_: Val = [APP, env, x];
+    env.push(x);
+    x[1] = R(env, value);
+    return R(env, body);
 };
 
 // Run a Law
-const R = (envSize: number, env: Val, body: Val): Val => {
+const R = (env: Val[], body: Val): Val => {
     body = dig(body);
-    if (body[0] === NAT && body[1] <= envSize) {
-        return I(body, env, envSize - body[1]);
+    if (body[0] === NAT && body[1] <= env.length) {
+        return I(body, env, env.length - body[1] - 1); // might need another -1?
     }
     if (body[0] === APP) {
         const f = dig(body[1]);
@@ -158,13 +164,13 @@ const R = (envSize: number, env: Val, body: Val): Val => {
                 if (f_inner[1] === 0) {
                     const f = g_inner;
                     const x = g;
-                    return [APP, R(envSize, env, f), R(envSize, env, x)];
+                    return [APP, R(env, f), R(env, x)];
                 }
                 // (let v in b)
                 if (f_inner[1] === 1) {
                     const v = g_inner;
                     const b = g;
-                    return L(envSize, env, v, b);
+                    return L(env, v, b);
                 }
             }
         }
@@ -203,14 +209,17 @@ const E = (o: Val): Val => {
             if (o[2] !== 0) return o;
             const b = o[3];
             o = [HOL, null];
-            return E(R(0, o, b));
+            // hrmmmmm
+            return E(R([], b));
         case APP:
             o = [APP, E(o[1]), o[2]];
             // if (A(o[1]) === 1) {
             //     if (o[1][0] === PIN && o[1][1][0] === LAW) {
             //     }
             // }
-            return A(o[1]) === 1 ? E(X(o, o)) : o;
+            const items = appArgs(E(o[1]));
+            items.push(o[2]);
+            return A(o[1]) === 1 ? E(X(o, items)) : o;
         case NAT:
             return o;
     }
@@ -260,15 +269,15 @@ const appArgs = (val: Val): Val[] => {
 };
 
 // eXecute(?)
-const X = (target: Val, environment: Val): Val => {
-    if (LOG) console.log(`X`, show(target), show(environment));
+const X = (target: Val, environment: Val[]): Val => {
+    if (LOG) console.log(`X`, show(target), environment.map(show));
     target = dig(target);
     switch (target[0]) {
         case PIN:
             const inner = dig(target[1]);
             if (inner[0] === NAT) {
                 const f = OP_FNS[inner[1] as OPCODE];
-                const args = appArgs(environment).slice(1);
+                const args = environment.slice(1);
                 if (args.length !== f.length) {
                     // throw new Error(
                     //     `wrong number of args for op ${inner[1]}: expected ${f.length}, found ${args.length}`,
@@ -280,7 +289,7 @@ const X = (target: Val, environment: Val): Val => {
             return X(target[1], environment);
         case LAW: {
             const [_, __, a, b] = target;
-            return R(a, environment, b);
+            return R(environment, b);
         }
         case APP: {
             const collapsed = appArgs(target[1]);
@@ -331,7 +340,10 @@ const toNat = mapp(ncase(n(0), inc()));
 const _ = APPS;
 
 chk('nat', [NAT, 5], inc(4));
+
+// LOG = true;
 chk('law', [LAW, 1, 2, n(3)], law(1, 2, 3));
+// process.exit(1);
 chk('pin', [PIN, n(5)], pin(inc(4)));
 
 chk('ncase', n(9), toNat(n(9)));

@@ -30,7 +30,7 @@ const OPS = {
     PCASE: 4,
 } as const;
 
-const opArity = {
+const opArity: Record<(typeof OPS)[keyof typeof OPS], number> = {
     [OPS.PIN]: 1,
     [OPS.LAW]: 3,
     [OPS.INC]: 1,
@@ -95,7 +95,7 @@ const opArity = {
  * >0, [not app] -> "fallback"
  */
 
-const I = (fallback: Val, env: Val, idx: number) => {
+const I = (fallback: Val, env: Val, idx: number): Val => {
     if (idx === 0) {
         return env[0] === APP ? env[2] : env;
     }
@@ -110,7 +110,7 @@ const I = (fallback: Val, env: Val, idx: number) => {
  *      > if the function cannot be applied, it probably ought to error
  * Nat: if it's an opcode, then the arity of the primop. otherwise *should* be 0
  */
-const A = (o: Val) => {
+const A = (o: Val): number => {
     switch (o[0]) {
         case PIN:
             // TODO haskell is different
@@ -123,7 +123,7 @@ const A = (o: Val) => {
             return head === 0 ? 0 : head - 1;
         }
         case NAT: {
-            return opArity[o[1]] ?? 0;
+            return opArity[o[1] as 0] ?? 0;
         }
     }
 };
@@ -157,6 +157,9 @@ Value * L(Value * n, Value * env, Value * val, Value * body) {
     // evaluate body with env_ now reflecting the dealio.
     return R(a_Big(Inc(n->n)), env_, body);
 }
+
+// ahhh ok so we're lazy folks. very lazy.
+// this ... is a
 
 n: a number, one larger than the one passed in to "L"
 e: the APP that may or may not have a hole as the arg

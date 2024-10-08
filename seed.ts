@@ -18,7 +18,7 @@ export const expToVal = (exp: Exp): Val => {
             }
             return [NAT, exp.w];
         case 'Bigy':
-            let v = 0n; //exp.buf[0];
+            let v = 0n;
             for (let i = 0; i < exp.buf.length; i++) {
                 v <<= 64n;
                 v |= exp.buf[i];
@@ -178,18 +178,23 @@ const seed_load = (buf: DataView) => {
     for (let i = 0; i < n_frags; i++) {
         tab.push(frag_load_cell());
     }
-    // console.log(show());
-    // console.log('dine');
     return tab[tab.length - 1];
 };
 
 const refSize = (n: number) => Math.ceil(Math.log2(n));
 
-const [_, __, inp] = process.argv;
+const [_, __, inp, ...args] = process.argv;
 const main_seed = seed_load(new DataView(readFileSync(inp).buffer));
 const main_val = expToVal(main_seed);
 // console.log(showVal(Force(APPS(main_val, [NAT, 10n], [NAT, 4n]))));
-const result = Force(main_val);
+console.log(showNice(Force(main_val)));
 // console.log(showVal(result));
-console.log(showNice(result));
+// console.log(showNice(result));
+if (args.length) {
+    console.log(
+        showNice(
+            Force(APPS(main_val, ...args.map((a): Val => [NAT, BigInt(+a)]))),
+        ),
+    );
+}
 // console.log(show(main_seed));

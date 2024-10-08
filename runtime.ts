@@ -36,6 +36,15 @@ const colors = [
 export { F as Force };
 export { show as showVal };
 
+export const asciiToNat = (name: string) => {
+    let nat = 0n;
+    for (let i = 0; i < name.length; i++) {
+        nat <<= 8n;
+        nat |= BigInt(name.charCodeAt(i));
+    }
+    return nat;
+};
+
 export const natToAscii = (nat: bigint) => {
     if (nat == 0n) {
         return '';

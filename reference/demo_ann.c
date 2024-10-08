@@ -273,7 +273,8 @@ int main(int argc, char **argv) {
         // Can't free words yet because the loaded bignums still contain
         // pointers this buffer.
 
-        print_exp(loaded); printf("\n");
+        // print_exp(loaded); printf("\n");
+        printf("done\n");
 
         return 0;
 }

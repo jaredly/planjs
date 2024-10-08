@@ -5,6 +5,24 @@ type Exp =
     | { tag: 'Bigy'; sz: bigint; buf: bigint[] }
     | { tag: 'Cell'; f: Exp; x: Exp };
 
+import { APP, NAT, Val } from './runtime';
+
+export const expToVal = (exp: Exp): Val => {
+    switch (exp.tag) {
+        case 'Cell':
+            return [APP, expToVal(exp.f), expToVal(exp.x)];
+        case 'Word':
+            return [NAT, exp.w];
+        case 'Bigy':
+            let v = exp.buf[0];
+            for (let i = 1; i < exp.buf.length; i++) {
+                v <<= 64n;
+                v |= exp.buf[i];
+            }
+            return [NAT, v];
+    }
+};
+
 const natToAscii = (nat: bigint) => {
     let res = '';
     const mask = (1n << 8n) - 1n;
@@ -158,6 +176,7 @@ const seed_load = (buf: DataView) => {
         tab.push(frag_load_cell());
     }
     console.log(show(tab[tab.length - 1]));
+    console.log('dine');
 };
 
 const refSize = (n: number) => Math.ceil(Math.log2(n));

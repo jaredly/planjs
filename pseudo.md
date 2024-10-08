@@ -12,10 +12,14 @@ There are 5 "primitive operations" (or primops):
 - PCASE(p, l, a, n, x): 'desctructs' a PLAN value [App]lying one of the four "handlers" depending on the type of x.
 
 Within the body of a Law, there are a few special forms that comprise the "embedded dsl"
+```
 - (0 f x) : App(App(Nat(0), f), x) -> (f x)
 - (1 v b) : App(App(Nat(1), v), b) -> (let v in b)
 - (2 c)   : App(Nat(2), c)         -> c
+```
 Additionally, a bare `Nat` is evaluated as an index into the "environment" list of values, if possible.
+
+The "environment" used in evaluating the body of a law always has as its first argument the result of evaluating that law (this is how cyclic references are possible, by evaluating a bare `0`). The numbers `1...arity` refer to the arguments "passed to" the law, and numbers above `arity` refer to locally let-bound values. Note that, due to laziness, a bare number in the body of a law can refer to subsequently let-bound values within that law. Any bare numbers that exceed the final length of the environment evaluate to their numeric value.
 
 ```h
 // Immediate value
@@ -83,6 +87,9 @@ E(App(fn, arg))  =
   A(fn) == 1 ? E(X(App(fn, arg), items)) : App(fn, arg)
 E(v@Nat)         = v
 E(Ref(env, idx)) = idx < len(env) ? E(env[idx]) : Nat(idx)
+
+appList(App(fn, arg)) = [...appList(fn), arg]
+appList(v)            = [v]
 
 // e[X]ecute ~target:Val ~environment:Val[] -> Val
 // Execute primops, evaluate law bodies, perform function application.

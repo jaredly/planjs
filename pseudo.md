@@ -5,11 +5,11 @@ There are 4 main kinds of PLAN values; `Pin(inner), Law(id, arity, body), App(fn
 A fifth value `Ref(env, idx)` is used during evaluation to represent lazy evaluation and to allow for cyclic data structures. It is impossible to directly construct a `Ref` via user input, it is only used internally.
 
 There are 5 "primitive operations" (or primops):
-- PIN(v): constructs a pin with contents `v`
-- INC(n): increments a number by 1
-- LAW(name, arity, body): constructs a law
-- NCASE(zero, positive, value): 'destructs' a nat; producing the "zero" case if it is zero, otherwise `App`lying the positive case with argument `value-1`
-- PCASE(p, l, a, n, x): 'destructs' a PLAN value `App`lying one of the four "handlers" depending on the type of x.
+- `PIN(v)`: constructs a pin with contents `v`
+- `INC(n)`: increments a number by 1
+- `LAW(name, arity, body)`: constructs a law
+- `NCASE(zero, positive, value)`: 'destructs' a nat; producing the "zero" case if it is zero, otherwise `App`lying the positive case with argument `value-1`
+- `PCASE(p, l, a, n, x)`: 'destructs' a PLAN value `App`lying one of the four "handlers" depending on the type of x.
 
 Within the body of a Law, there are a few special forms that comprise the "embedded dsl"
 ```

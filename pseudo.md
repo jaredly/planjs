@@ -8,8 +8,8 @@ There are 5 "primitive operations" (or primops):
 - PIN(v): constructs a pin with contents `v`
 - INC(n): increments a number by 1
 - LAW(name, arity, body): constructs a law
-- NCASE(zero, positive, value): 'destructs' a nat; producing the "zero" case if it is zero, otherwise [App]lying the positive case to (value-1)
-- PCASE(p, l, a, n, x): 'desctructs' a PLAN value [App]lying one of the four "handlers" depending on the type of x.
+- NCASE(zero, positive, value): 'destructs' a nat; producing the "zero" case if it is zero, otherwise `App`lying the positive case with argument `value-1`
+- PCASE(p, l, a, n, x): 'destructs' a PLAN value `App`lying one of the four "handlers" depending on the type of x.
 
 Within the body of a Law, there are a few special forms that comprise the "embedded dsl"
 ```

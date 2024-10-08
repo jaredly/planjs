@@ -70,7 +70,7 @@ F(App(fn, arg)) = App(F(fn), F(arg))
 F(x)            = x
 
 // [E]valuate: Val -> IVal
-E(v@Pin) = o
+E(v@Pin) = v
 E(Law(_, 0, body)) =
   env = []
   res = R(env, body)

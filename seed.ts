@@ -6,6 +6,8 @@ ok lets talk about this
 
 import { readFileSync } from 'fs';
 
+console.log = () => {};
+
 // @ts-ignore
 DataView.prototype.getUint64 = function (byteOffset, littleEndian) {
     // split 64-bit number into two 32-bit parts
@@ -96,13 +98,17 @@ const run = (data: ArrayBuffer) => {
     });
 
     const unpack = [];
-    let refs = words.length + bytes.length;
+    let refs = words.length + bytes.length + Number(numHoles);
 
-    type Tree = bigint | bigint[] | number | [Tree, Tree];
+    type Tree = bigint | string | bigint[] | number | [Tree, Tree];
     const pairs: Tree[] = [];
 
     const get = (idx: number): Tree => {
         const o = idx;
+        if (idx < numHoles) {
+            return `hole${idx}`;
+        }
+        idx -= Number(numHoles);
         if (idx < numBigNats) {
             // console.log('big', idx, o);
             return bigNatData[idx];
@@ -127,19 +133,14 @@ const run = (data: ArrayBuffer) => {
 
     const sb = (_: any, v: any) => (typeof v === 'bigint' ? v.toString() : v);
 
-    const total = trees
-        .map((t) => rev(t.toString(2).padStart(8, '0')))
-        .join('');
-    console.log(total);
-
-    let at = 0;
     for (let i = 0; i < trees.length; i++) {
         const size = bsize(refs);
-        const one = parseInt(total.slice(at, at + size), 2);
-        at += size;
-        const two = parseInt(total.slice(at, at + size), 2);
-        at += size;
-        console.log(one, two);
+        const tree = trees[i].toString(2).padStart(8, '0');
+        const ot = rev(tree.slice(0, 4));
+        const tt = rev(tree.slice(4));
+        const one = parseInt(ot, 2);
+        const two = parseInt(tt, 2);
+        console.log(`tree[${tree}] ${ot}=${one} ${tt}=${two}`, 'dest =', refs);
         const go = get(one);
         const gt = get(two);
         pairs.push([go, gt]);
@@ -147,20 +148,7 @@ const run = (data: ArrayBuffer) => {
         refs++;
     }
 
-    // for (let i = 0; i < trees.length; i++) {
-    //     const size = bsize(refs);
-    //     const tree = trees[i].toString(2).padStart(8, '0');
-    //     const ot = rev(tree.slice(0, 4));
-    //     const tt = rev(tree.slice(4));
-    //     const one = parseInt(ot, 2);
-    //     const two = parseInt(tt, 2);
-    //     console.log(`tree[${tree}] ${ot}=${one} ${tt}=${two}`, 'dest =', refs);
-    //     const go = get(one);
-    //     const gt = get(two);
-    //     pairs.push([go, gt]);
-    //     console.log(`-> fragment: ${JSON.stringify([go, gt], sb)}`);
-    //     refs++;
-    // }
+    process.stdout.write(`done ${pairs.length} fragments processed`);
 };
 
 const rev = (s: string) => s.split('').reverse().join('');

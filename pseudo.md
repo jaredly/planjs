@@ -11,6 +11,8 @@ There are 5 "primitive operations" (or primops):
 - `NCASE(zero, positive, value)`: 'destructs' a nat; producing the "zero" case if it is zero, otherwise `App`lying the positive case with argument `value-1`
 - `PCASE(p, l, a, n, x)`: 'destructs' a PLAN value `App`lying one of the four "handlers" depending on the type of x.
 
+The primops are represented by a `Pin`ned `Nat`, with the constants 0 - 4. For example `App(Pin(Nat(1)), Nat(2))` represents calling `INC` with `2`, and will produce `Nat(3)`.
+
 Within the body of a Law, there are a few special forms that comprise the "embedded dsl"
 ```
 - (0 f x) : App(App(Nat(0), f), x) -> (f x)

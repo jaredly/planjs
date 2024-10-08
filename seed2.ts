@@ -10,6 +10,12 @@ const show = (e: Exp): string => {
     if (!e) return `<MISSING>`;
     switch (e.tag) {
         case 'Word':
+            // let res = '';
+            // let n = e.w;
+            // for (let i = 0; i < 8; i++) {
+            //     res += String.fromCharCode(Number(n & ((1n << 8n) - 1n)));
+            //     n = n << 8n;
+            // }
             return e.w.toString();
         case 'Bigy':
             return '<big>';
@@ -27,18 +33,62 @@ const show = (e: Exp): string => {
 
 const tracked = (buf: DataView) => {
     let i = 0;
-    let bits: null | string = '';
 
+    let partial: [number, number] = [0, 0];
+    const add = (n: number) => {
+        const [prev, pn] = partial;
+        partial[0] <<= 8;
+        partial[0] |= n;
+        partial[1] += 8;
+        console.log(
+            ` -=-> ${prev.toString(2).padStart(pn, '0')} + ${n
+                .toString(2)
+                .padStart(8, '0')} -> ${partial[0]
+                .toString(2)
+                .padStart(partial[1], '0')}`,
+        );
+    };
+    const take = (n: number) => {
+        if (n > partial[1]) throw new Error(`cant take ${n} - ${partial}`);
+        const mask = (1 << n) - 1;
+        const [prev, pn] = partial;
+        const res = partial[0] & mask;
+        partial[0] = partial[0] >> n;
+        partial[1] -= n;
+        console.log(
+            `take ${n} [${mask.toString(2)}] - from [${prev
+                .toString(2)
+                .padStart(pn, '0')}:${pn}] -> ${res} [${res
+                .toString(2)
+                .padStart(n, '0')}:${n}]  - final [${partial[0]
+                .toString(2)
+                .padStart(partial[1], '0')}:${partial[1]}]`,
+        );
+        return res;
+    };
+    // const nextBits = (n: number) => {
+    //     if (partial == null) {
+    //         partial = [next8(), 8];
+    //     }
+    //     while (partial[1] < n) {
+    //         partial[0] = (partial[0] << 8) | next8();
+    //         partial[1] += 8;
+    //     }
+    //     const mask = (1 << n) - 1;
+    //     const res = partial[0] & mask;
+    //     partial[0] = partial[0] >> n;
+    //     partial[1] -= n;
+    //     return res;
+    // };
+
+    let bits: null | string = '';
     const stringBits = () => {
         if (i >= buf.byteLength) {
             return '00000000';
         }
-        return next8()
-            .toString(2)
-            .padStart(8, '0')
-            .split('')
-            .reverse()
-            .join('');
+        const n = next8();
+        add(n);
+        return n.toString(2).padStart(8, '0').split('').reverse().join('');
     };
 
     // little endiannn
@@ -49,9 +99,17 @@ const tracked = (buf: DataView) => {
         while (bits.length < n) {
             bits += stringBits();
         }
+        const pbits = bits;
         const slice = bits.slice(0, n);
         bits = bits.slice(n);
-        return parseInt(slice.split('').reverse().join(''), 2);
+        const res = parseInt(slice.split('').reverse().join(''), 2);
+        const took = take(n);
+        console.log('compare', res, took);
+        if (res !== took) {
+            console.warn(ansis.red('NOOO'), res, took);
+            console.log(ansis.green(pbits), bits);
+        }
+        return res;
     };
 
     const next64 = () => {
@@ -73,8 +131,6 @@ const tracked = (buf: DataView) => {
 
     return { next64, next8, nextBits };
 };
-
-const n = (n: bigint) => Number(n);
 
 const seed_load = (buf: DataView) => {
     const { next64, next8, nextBits } = tracked(buf);
@@ -123,7 +179,7 @@ const seed_load = (buf: DataView) => {
     const frag_load = (): Exp => {
         const isCell = nextBits(1);
         if (isCell) return frag_load_cell();
-        return tab[nextBits(bsize(tab.length))];
+        return tab[nextBits(refSize(tab.length))];
     };
 
     for (let i = 0; i < n_frags; i++) {
@@ -132,7 +188,7 @@ const seed_load = (buf: DataView) => {
     console.log(show(tab[tab.length - 1]));
 };
 
-const bsize = (n: number) => Math.ceil(Math.log2(n));
+const refSize = (n: number) => Math.ceil(Math.log2(n));
 
 const [_, __, inp] = process.argv;
 seed_load(new DataView(readFileSync(inp).buffer));

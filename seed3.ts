@@ -27,9 +27,8 @@ const show = (e: Exp): string => {
 
 const tracked = (buf: DataView) => {
     let i = 0;
-    let bits: null | string = '';
-
-    const stringBits = () => {
+    // little endiannn
+    const nextBits = () => {
         if (i >= buf.byteLength) {
             return '00000000';
         }
@@ -40,31 +39,34 @@ const tracked = (buf: DataView) => {
             .reverse()
             .join('');
     };
-
-    // little endiannn
-    const nextBits = (n: number) => {
-        if (bits === null) {
-            bits = stringBits();
-        }
-        while (bits.length < n) {
-            bits += stringBits();
-        }
-        const slice = bits.slice(0, n);
-        bits = bits.slice(n);
-        return parseInt(slice.split('').reverse().join(''), 2);
-    };
-
     const next64 = () => {
         if (i >= buf.byteLength) {
-            throw new Error(`too large`);
+            // throw new Error(`too large`);
+            return 0n;
         }
+        // if (i + 8 > buf.byteLength) {
+        //     let res = '';
+        //     for (let j = 0; j < 8 && i < buf.byteLength; j++) {
+        //         res += next8()
+        //             .toString(2)
+        //             .padStart(8, '0')
+        //             .split('')
+        //             .reverse()
+        //             .join('');
+        //     }
+        //     return BigInt(parseInt(res.split('').reverse().join(''), 2));
+        // }
+        // align to 8
+        // i = i - (i % 8);
         const v = buf.getBigUint64(i, true);
         i += 8;
         return v;
     };
     const next8 = () => {
         if (i >= buf.byteLength) {
-            throw new Error(`too large`);
+            // throw new Error(`too large`);
+            console.warn('too large?');
+            return 0;
         }
         const v = buf.getUint8(i);
         i++;
@@ -114,6 +116,17 @@ const seed_load = (buf: DataView) => {
         tab.push({ tag: 'Word', w: BigInt(next8()) });
     }
 
+    let bits = nextBits();
+    const consume = (n: number) => {
+        while (bits.length < n) {
+            bits += nextBits();
+        }
+        const res = bits.slice(0, n);
+        const v = parseInt(res.split('').reverse().join(''), 2);
+        bits = bits.slice(n);
+        return v;
+    };
+
     const frag_load_cell = (): Exp => {
         const f = frag_load();
         const x = frag_load();
@@ -121,9 +134,9 @@ const seed_load = (buf: DataView) => {
     };
 
     const frag_load = (): Exp => {
-        const isCell = nextBits(1);
+        const isCell = consume(1);
         if (isCell) return frag_load_cell();
-        return tab[nextBits(bsize(tab.length))];
+        return tab[consume(bsize(tab.length))];
     };
 
     for (let i = 0; i < n_frags; i++) {

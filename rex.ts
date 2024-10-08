@@ -32,4 +32,5 @@ const parse = (text: string, i: number, dest: Nest[]): number => {
         dest.push(items);
         return i;
     }
+    return 0;
 };

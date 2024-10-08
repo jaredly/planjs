@@ -63,11 +63,11 @@ const show = (v: Val, trace: Val[] = []): string => {
 };
 
 const OPS = {
-    PIN: 0,
-    LAW: 1,
-    INC: 2,
-    NCASE: 3,
-    PCASE: 4,
+    LAW: 0,
+    PCASE: 1,
+    NCASE: 2,
+    INC: 3,
+    PIN: 4,
 } as const;
 
 type OPCODE = (typeof OPS)[keyof typeof OPS];
@@ -297,13 +297,13 @@ const X = (target: Val, environment: Val[]): Val => {
 };
 
 const chk = (msg: string, x: Val, y: Val) => {
-    if (LOG) console.log(`expected`, show(x), `input`, show(y));
+    if (LOG) console.log(`expected`, show(x), `input`, show(y), msg);
     y = F(y);
     if (equal(x, y)) {
         console.log(`✅ ${msg}`);
         return;
     }
-    console.log(`🚨 ${show(x)} != ${show(y)}`);
+    console.log(`🚨 ${show(x)} != ${show(y)}`, msg);
 };
 
 const mapp =
@@ -360,7 +360,7 @@ const appHead = mapp(pcase(0, 0, k, 0));
 chk('apphead', n(200), appHead(_(200, 3)));
 chk('first of inf', n(100), appHead(law(99, 1, llet(lapp(1, 2), 2), 100)));
 
-chk('pinlaw', [LAW, 1, 2, n(0)], pin(LAW, 1, 2, 0));
+chk('pinlaw', [LAW, 1, 2, n(0)], pin(law(), 1, 2, 0));
 chk('pinlaw2', [LAW, 1, 2, n(0)], pin(law(1), 2, 0));
 chk('pinlaw3', [PIN, [LAW, 1, 2, n(0)]], pin(law(1, 2, 0), 3, 4));
 // HMMM is this supposed to collapse?
@@ -447,7 +447,7 @@ const headF = law(
 const tag = law(0, 1, lapp(toNat(), lapp(headF, 1))); //
 
 chk('head of closure', n(7), _(headF, _(7, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
-chk('head law', [PIN, [NAT, LAW]], _(headF, law(1, 2)));
+chk('head law', [PIN, [NAT, OPS.LAW]], _(headF, law(1, 2)));
 
 // -- tag of ADT (head cast to nat)
 chk('tag of ADT', n(7), _(tag, _(7, 1, 2, 3, 4, 5, 6, 7, 8, 9)));

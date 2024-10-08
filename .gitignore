@@ -2,3 +2,4 @@ node_modules
 run
 run.hi
 run.o
+*.js

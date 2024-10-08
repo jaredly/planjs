@@ -34,6 +34,26 @@ const colors = [
 ];
 
 export { F as Force };
+export { show as showVal };
+
+export const natToAscii = (nat: bigint) => {
+    if (nat == 0n) {
+        return '';
+    }
+    if (nat == null) {
+        return '??NULL??';
+    }
+    // console.log(JSON.stringify(Number(nat)) ?? 'undefined');
+    let res = '';
+    const mask = (1n << 8n) - 1n;
+    for (let i = 0; i < 8; i += 1) {
+        const n = Number(nat & mask);
+        if (n === 0) break;
+        res += String.fromCharCode(n);
+        nat >>= 8n;
+    }
+    return res;
+};
 
 export const show = (v: Val, trace: Val[] = []): string => {
     if (trace.includes(v)) {
@@ -46,8 +66,21 @@ export const show = (v: Val, trace: Val[] = []): string => {
     switch (v[0]) {
         case PIN:
             return c(`<${show(v[1], trace)}>`);
-        case LAW:
-            return c(`{${v[1]} ${v[2]} ${show(v[3], trace)}}`);
+        case LAW: {
+            // const args = [];
+            // for (let i = 0; i < v[2]; i++) {
+            //     args.push(`$${i + 1}`);
+            // }
+            // return c(
+            //     `fn ${natToAscii(v[1])} (${args.join(', ')}) ${show(
+            //         v[3],
+            //         trace,
+            //     )}}`,
+            // );
+            return c(
+                `{${natToAscii(v[1]) || '_'} ${v[2]} ${show(v[3], trace)}}`,
+            );
+        }
         case APP:
             return c(
                 `(${appArgs(v)
@@ -55,7 +88,7 @@ export const show = (v: Val, trace: Val[] = []): string => {
                     .join(' ')})`,
             );
         case NAT:
-            return `${v[1]}@`;
+            return `${v[1]}`;
         case REF:
             return `[${v[1]
                 .map((m, i) => `${ansis.red(i + '')}=${show(m, trace)}`)
@@ -71,7 +104,10 @@ export const OPS = {
     PIN: 4,
 } as const;
 
-type OPCODE = (typeof OPS)[keyof typeof OPS];
+export const OPNAMES: Record<number, string> = {};
+Object.entries(OPS).forEach(([name, val]) => (OPNAMES[val] = name));
+
+export type OPCODE = (typeof OPS)[keyof typeof OPS];
 const opArity: Record<OPCODE, number> = {
     [OPS.PIN]: 1,
     [OPS.LAW]: 3,
@@ -79,6 +115,8 @@ const opArity: Record<OPCODE, number> = {
     [OPS.NCASE]: 3,
     [OPS.PCASE]: 5,
 };
+
+export const REQUIRE_OP_PIN = false;
 
 export let LOG = false;
 
@@ -106,7 +144,11 @@ const A = (o: IVal): number => {
             return head === 0 ? 0 : head - 1;
         }
         case NAT: {
-            return 0; // opArity[o[1] as 0] ?? 0;
+            if (REQUIRE_OP_PIN) {
+                return 0;
+            }
+            return opArity[Number(o[1]) as 0] ?? 0;
+            // return 0; // opArity[o[1] as 0] ?? 0;
         }
     }
 };
@@ -287,6 +329,20 @@ const X = (target: Val, environment: Val[]): Val => {
                 return f(...(args as [Val, Val, Val, Val, Val]));
             }
             return X(E(target[1]), environment);
+        case NAT: {
+            if (REQUIRE_OP_PIN) {
+                return target;
+            }
+            const f = OP_FNS[Number(target[1]) as OPCODE];
+            if (!f) {
+                return target;
+            }
+            const args = environment.slice(1);
+            if (args.length !== f.length) {
+                return target;
+            }
+            return f(...(args as [Val, Val, Val, Val, Val]));
+        }
         case LAW: {
             const [_, __, a, b] = target;
             return R(environment, b);

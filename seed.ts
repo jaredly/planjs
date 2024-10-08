@@ -5,17 +5,21 @@ type Exp =
     | { tag: 'Bigy'; sz: bigint; buf: bigint[] }
     | { tag: 'Cell'; f: Exp; x: Exp };
 
-import { APP, NAT, Val } from './runtime';
+import { APP, APPS, Force, NAT, showVal, Val } from './runtime';
+import { showNice } from './pst';
 
 export const expToVal = (exp: Exp): Val => {
     switch (exp.tag) {
         case 'Cell':
             return [APP, expToVal(exp.f), expToVal(exp.x)];
         case 'Word':
+            if (exp.w === null) {
+                throw new Error('nulll');
+            }
             return [NAT, exp.w];
         case 'Bigy':
-            let v = exp.buf[0];
-            for (let i = 1; i < exp.buf.length; i++) {
+            let v = 0n; //exp.buf[0];
+            for (let i = 0; i < exp.buf.length; i++) {
                 v <<= 64n;
                 v |= exp.buf[i];
             }
@@ -126,16 +130,15 @@ const seed_load = (buf: DataView) => {
     const { next64, next8, nextBits } = tracked(buf);
 
     const n_holes = next64();
-    const n_bigs = next64();
-    const n_words = next64();
-    const n_bytes = next64();
-    const n_frags = next64();
 
     if (n_holes != 0n) {
         throw new Error(`file is just one seed, expected pod?`);
     }
 
-    const n_entries = n_bigs + n_words + n_bytes + n_frags;
+    const n_bigs = next64();
+    const n_words = next64();
+    const n_bytes = next64();
+    const n_frags = next64();
 
     const tab: Exp[] = [];
 
@@ -175,11 +178,18 @@ const seed_load = (buf: DataView) => {
     for (let i = 0; i < n_frags; i++) {
         tab.push(frag_load_cell());
     }
-    console.log(show(tab[tab.length - 1]));
-    console.log('dine');
+    // console.log(show());
+    // console.log('dine');
+    return tab[tab.length - 1];
 };
 
 const refSize = (n: number) => Math.ceil(Math.log2(n));
 
 const [_, __, inp] = process.argv;
-seed_load(new DataView(readFileSync(inp).buffer));
+const main_seed = seed_load(new DataView(readFileSync(inp).buffer));
+const main_val = expToVal(main_seed);
+// console.log(showVal(Force(APPS(main_val, [NAT, 10n], [NAT, 4n]))));
+const result = Force(main_val);
+// console.log(showVal(result));
+console.log(showNice(result));
+// console.log(show(main_seed));

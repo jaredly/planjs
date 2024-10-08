@@ -1,181 +1,185 @@
-/*
-ok lets talk about this
-
-
-*/
-
 import { readFileSync } from 'fs';
 
-console.log = () => {};
+type Exp =
+    | { tag: 'Word'; w: bigint }
+    | { tag: 'Bigy'; sz: bigint; buf: bigint[] }
+    | { tag: 'Cell'; f: Exp; x: Exp };
 
-// @ts-ignore
-DataView.prototype.getUint64 = function (byteOffset, littleEndian) {
-    // split 64-bit number into two 32-bit parts
-    const left = this.getUint32(byteOffset, littleEndian);
-    const right = this.getUint32(byteOffset + 4, littleEndian);
+import { APP, NAT, Val } from './runtime';
 
-    // combine the two 32-bit values
-    const combined = littleEndian
-        ? left + 2 ** 32 * right
-        : 2 ** 32 * left + right;
-
-    if (!Number.isSafeInteger(combined))
-        console.warn(
-            combined,
-            'exceeds MAX_SAFE_INTEGER. Precision may be lost',
-        );
-
-    return combined;
+export const expToVal = (exp: Exp): Val => {
+    switch (exp.tag) {
+        case 'Cell':
+            return [APP, expToVal(exp.f), expToVal(exp.x)];
+        case 'Word':
+            return [NAT, exp.w];
+        case 'Bigy':
+            let v = exp.buf[0];
+            for (let i = 1; i < exp.buf.length; i++) {
+                v <<= 64n;
+                v |= exp.buf[i];
+            }
+            return [NAT, v];
+    }
 };
 
-const run = (data: ArrayBuffer) => {
-    console.log('data', data.byteLength);
+const natToAscii = (nat: bigint) => {
+    let res = '';
+    const mask = (1n << 8n) - 1n;
+    for (let i = 0; i < 8; i += 1) {
+        res += String.fromCharCode(Number(nat & mask));
+        nat >>= 8n;
+    }
+    return res;
+};
+
+const show = (e: Exp): string => {
+    if (!e) return `<MISSING>`;
+    switch (e.tag) {
+        case 'Word':
+            if (e.w > 1024) {
+                return natToAscii(e.w);
+            }
+            return e.w.toString();
+        case 'Bigy':
+            return '<big>';
+        case 'Cell':
+            const args: Exp[] = [e.x];
+            let x = e.f;
+            while (x.tag === 'Cell') {
+                args.unshift(x.x);
+                x = x.f;
+            }
+            args.unshift(x);
+            return `(${args.map(show).join(' ')})`;
+    }
+};
+
+const tracked = (buf: DataView) => {
     let i = 0;
-    // const arr = new ArrayBuffer(data)
-    const d = new DataView(data);
+
+    let partial: [number, number] = [0, 0];
+    const add = (n: number) => {
+        partial[0] = (n << partial[1]) | partial[0];
+        partial[1] += 8;
+    };
+    const take = (n: number) => {
+        if (partial == null) throw new Error(`nope`);
+        if (n > partial[1]) throw new Error(`cant take ${n} - ${partial}`);
+        const mask = (1 << n) - 1;
+        const res = partial[0] & mask;
+        partial[0] = partial[0] >> n;
+        partial[1] -= n;
+        return res;
+    };
+    const nextBits = (n: number) => {
+        while (partial[1] < n) {
+            add(next8());
+        }
+        return take(n);
+    };
+
+    // For debugging, here's working with the numbers as strings of '0' and '1'
+    // let bits: null | string = '';
+    // const stringBits = () => {
+    //     if (i >= buf.byteLength) {
+    //         return '00000000';
+    //     }
+    //     const n = next8();
+    //     // add(n);
+    //     return n.toString(2).padStart(8, '0').split('').reverse().join('');
+    // };
+    // const nextBits = (n: number) => {
+    //     if (bits === null) {
+    //         bits = stringBits();
+    //     }
+    //     while (bits.length < n) {
+    //         const next = stringBits();
+    //         bits += next;
+    //     }
+    //     const slice = bits.slice(0, n);
+    //     bits = bits.slice(n);
+    //     return parseInt(slice.split('').reverse().join(''), 2);
+    // };
 
     const next64 = () => {
-        if (i >= data.byteLength) {
+        if (i >= buf.byteLength) {
             throw new Error(`too large`);
-            return BigInt(0);
         }
-        const v = d.getBigUint64(i, true);
+        const v = buf.getBigUint64(i, true);
         i += 8;
         return v;
     };
     const next8 = () => {
-        if (i >= data.byteLength) {
+        if (i >= buf.byteLength) {
             throw new Error(`too large`);
-            return 0;
         }
-        const v = d.getUint8(i);
+        const v = buf.getUint8(i);
         i++;
         return v;
     };
 
-    const numHoles = next64();
-    const numBigNats = next64();
-    const numWords = next64();
-    const numBytes = next64();
-    const numTrees = next64();
-    const bigNatSizes = [];
-    // console.log({ numHoles, numBigNats, numWords, numBytes });
-    for (let i = 0; i < numBigNats; i++) {
-        bigNatSizes.push(next64());
-    }
-    const bigNatData: bigint[][] = [];
-    for (let bns of bigNatSizes) {
-        let words = [];
-        for (let i = 0; i < bns; i++) {
-            words.push(next64());
-        }
-        bigNatData.push(words);
-    }
-    const words: bigint[] = [];
-    for (let i = 0; i < numWords; i++) {
-        words.push(next64());
-    }
-    const bytes: number[] = [];
-    for (let i = 0; i < numBytes; i++) {
-        bytes.push(next8());
-    }
-    const trees: number[] = [];
-    for (let i = 0; i < numTrees; i++) {
-        trees.push(next8());
-    }
-    const zeros: number[] = [];
-    console.log({
-        numHoles,
-        numBigNats,
-        numWords,
-        numBytes,
-        numTrees,
-        bigNatSizes,
-        bigNatData,
-        words,
-        bytes,
-        trees,
-    });
-
-    const unpack = [];
-    let refs = words.length + bytes.length + Number(numHoles);
-
-    type Tree = bigint | string | bigint[] | number | [Tree, Tree];
-    const pairs: Tree[] = [];
-
-    const get = (idx: number): Tree => {
-        const o = idx;
-        if (idx < numHoles) {
-            return `hole${idx}`;
-        }
-        idx -= Number(numHoles);
-        if (idx < numBigNats) {
-            // console.log('big', idx, o);
-            return bigNatData[idx];
-        }
-        idx -= Number(numBigNats);
-        if (idx < numWords) {
-            // console.log('word', idx, o);
-            return words[idx];
-        }
-        idx -= Number(numWords);
-        if (idx < numBytes) {
-            // console.log('bute', idx, o);
-            return bytes[idx];
-        }
-        idx -= Number(numBytes);
-        if (idx < pairs.length) {
-            // console.log('pair', idx, o);
-            return pairs[idx];
-        }
-        throw new Error(`idx out of bounds? ${o}`);
-    };
-
-    const sb = (_: any, v: any) => (typeof v === 'bigint' ? v.toString() : v);
-
-    for (let i = 0; i < trees.length; i++) {
-        const size = bsize(refs);
-        const tree = trees[i].toString(2).padStart(8, '0');
-        const ot = rev(tree.slice(0, 4));
-        const tt = rev(tree.slice(4));
-        const one = parseInt(ot, 2);
-        const two = parseInt(tt, 2);
-        console.log(`tree[${tree}] ${ot}=${one} ${tt}=${two}`, 'dest =', refs);
-        const go = get(one);
-        const gt = get(two);
-        pairs.push([go, gt]);
-        console.log(`-> fragment: ${JSON.stringify([go, gt], sb)}`);
-        refs++;
-    }
-
-    process.stdout.write(`done ${pairs.length} fragments processed`);
+    return { next64, next8, nextBits };
 };
 
-const rev = (s: string) => s.split('').reverse().join('');
+const seed_load = (buf: DataView) => {
+    const { next64, next8, nextBits } = tracked(buf);
 
-const bsize = (n: number) => Math.ceil(Math.log2(n));
+    const n_holes = next64();
+    const n_bigs = next64();
+    const n_words = next64();
+    const n_bytes = next64();
+    const n_frags = next64();
 
-// const raw =
-//     '000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000101000000000000000010001001000000000000000000000000000000000000000';
-// const bytes: number[] = [];
-// for (let i = 0; i < raw.length; i += 8) {
-//     const n = parseInt(
-//         raw.slice(i, i + 8),
-//         // .split('')
-//         // .reverse()
-//         // .join(''),
-//         2,
-//     );
-//     bytes.push(n);
-// }
-// for (let i = 0; i < bytes.length; i += 8) {
-//     console.log(bytes.slice(i, i + 8));
-// }
-// const buf = Buffer.from(bytes);
-// console.log(buf.buffer);
-// run(buf.buffer);
+    if (n_holes != 0n) {
+        throw new Error(`file is just one seed, expected pod?`);
+    }
+
+    const n_entries = n_bigs + n_words + n_bytes + n_frags;
+
+    const tab: Exp[] = [];
+
+    const bigwidths: bigint[] = [];
+    for (let i = 0; i < n_bigs; i++) {
+        bigwidths.push(next64());
+    }
+
+    for (let w of bigwidths) {
+        const buf: bigint[] = [];
+        for (let i = 0; i < w; i++) {
+            buf.push(next64());
+        }
+        tab.push({ tag: 'Bigy', sz: w, buf: [] });
+    }
+
+    for (let i = 0; i < n_words; i++) {
+        tab.push({ tag: 'Word', w: next64() });
+    }
+
+    for (let i = 0; i < n_bytes; i++) {
+        tab.push({ tag: 'Word', w: BigInt(next8()) });
+    }
+
+    const frag_load_cell = (): Exp => {
+        const f = frag_load();
+        const x = frag_load();
+        return { tag: 'Cell', f, x };
+    };
+
+    const frag_load = (): Exp => {
+        const isCell = nextBits(1);
+        if (isCell) return frag_load_cell();
+        return tab[nextBits(refSize(tab.length))];
+    };
+
+    for (let i = 0; i < n_frags; i++) {
+        tab.push(frag_load_cell());
+    }
+    console.log(show(tab[tab.length - 1]));
+    console.log('dine');
+};
+
+const refSize = (n: number) => Math.ceil(Math.log2(n));
 
 const [_, __, inp] = process.argv;
-run(readFileSync(inp).buffer);
-
-// 00000010
+seed_load(new DataView(readFileSync(inp).buffer));

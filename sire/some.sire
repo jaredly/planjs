@@ -1,0 +1,28 @@
+#### some
+
+= LAW     | 0
+
+= valCase | 1
+
+= natCase | 2
+
+= inc     | 3
+
+= PIN     | 4
+
+= die     | {die}   ; Calling a primop above 4 is a crash.
+
+= todo    | {todo}  ; Calling a primop above 4 is a crash.
+
+= (_IsNat x)   | 1 (_ & 0) (_ _ _ & 0) (_ _ & 0) (_ & 1) x
+
+= isNat     | _IsNat
+
+
+= main isNat
+
+^-^
+^-^ isNat
+^-^
+^-^ main
+^-^

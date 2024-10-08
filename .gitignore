@@ -3,3 +3,5 @@ run
 run.hi
 run.o
 *.js
+reference/demo
+pallas

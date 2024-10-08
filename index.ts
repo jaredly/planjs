@@ -275,7 +275,7 @@ const X = (target: Val, environment: Val[]): Val => {
         );
     switch (target[0]) {
         case PIN:
-            const inner = E(target[1]);
+            const inner = target[1];
             if (inner[0] === NAT) {
                 const f = OP_FNS[inner[1] as OPCODE];
                 const args = environment.slice(1);
@@ -284,7 +284,7 @@ const X = (target: Val, environment: Val[]): Val => {
                 }
                 return f(...(args as [Val, Val, Val, Val, Val]));
             }
-            return X(target[1], environment);
+            return X(E(target[1]), environment);
         case LAW: {
             const [_, __, a, b] = target;
             return R(environment, b);

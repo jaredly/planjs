@@ -1,4 +1,18 @@
 
+# PALLAS but make it javascript
+
+I've got a PLAN interpreter, that has some tests passing.
+
+...
+
+recursive .. references ... are they working right?
+should $0 reference the law, or the return value of the law?
+I guess the law, so you can actually call recursive functions.
+
+
+
+#
+
 - [x] get haskell tests passing https://opfn.gitbook.io/pallas/plan/definition
 - [ ] see if I can load ... all of the sire impl? or something like that?
 - [ ] maybe try to load the stdlib?

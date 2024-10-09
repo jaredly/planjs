@@ -76,7 +76,11 @@ chk('law dsl CONST', n(32), law(0, 1, lconst(32), 0));
 const k = law(0, 2, 1);
 const appHead = mapp(pcase(0, 0, k, 0));
 chk('apphead', n(200), appHead(_(200, 3)));
-chk('first of inf', n(100), appHead(law(99, 1, llet(lapp(1, 2), 2), 100)));
+chk(
+    'first of inf',
+    n(100),
+    appHead(law(99, 1, llet(lapp(1 /*arg*/, 2 /*self*/), 2), 100)),
+);
 
 chk('pinlaw', [LAW, 1n, 2n, n(0)], pin(law(), 1, 2, 0));
 chk('pinlaw2', [LAW, 1n, 2n, n(0)], pin(law(1), 2, 0));

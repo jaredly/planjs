@@ -32,7 +32,7 @@ export const parseTop = (top: Sexp) => {
         typeof top[1] === 'string' &&
         Array.isArray(top[2])
     ) {
-        console.log('def', top[1]);
+        // console.log('def', top[1]);
         const args: string[] = [top[1]];
         top[2].forEach((item) => {
             if (typeof item === 'string') {
@@ -44,7 +44,7 @@ export const parseTop = (top: Sexp) => {
         const body = parse(top[3], args);
         named[top[1]] = [
             PIN,
-            [LAW, asciiToNat(top[1]), BigInt(args.length - 1), body],
+            [LAW, asciiToNat(top[1]), BigInt(top[2].length), body],
         ];
         return;
     }
@@ -94,6 +94,12 @@ const lapps = (inLaw: boolean, ...items: Val[]): Val => {
 
 const parse = (item: Sexp, args: null | string[]): Val => {
     if (typeof item === 'string') {
+        if (item[0] === '$') {
+            const n = Number(item.slice(1));
+            if (Number.isInteger(n)) {
+                return [NAT, BigInt(n)];
+            }
+        }
         const n = Number(item);
         if (Number.isInteger(n)) {
             if (args != null) {
@@ -132,22 +138,24 @@ const parse = (item: Sexp, args: null | string[]): Val => {
                 throw new Error(`arg must be string`);
             }
         });
+        let ln = item[1].length;
         if (!args) {
             const body = parse(item[2], innerArgs);
-            return [LAW, 0n, BigInt(innerArgs.length - 1), body];
+            return [LAW, 0n, BigInt(ln), body];
         }
         let needed: string[] = [];
         free(item[2], innerArgs, needed);
         needed = needed.filter((n) => args.includes(n) && !named[n]);
-        console.log('needed', needed); //, item[2]);
+        // console.log('needed', needed); //, item[2]);
 
         if (needed.length) {
             innerArgs.splice(1, 0, ...needed);
+            ln += needed.length;
         }
 
         const body = parse(item[2], innerArgs);
         // TODO: scoping, need to wrap if used.
-        const law: Val = [LAW, 0n, BigInt(innerArgs.length - 1), body];
+        const law: Val = [LAW, 0n, BigInt(ln), body];
         if (needed.length) {
             return lapps(
                 args != null,
@@ -168,12 +176,13 @@ const parse = (item: Sexp, args: null | string[]): Val => {
 
 const [_, __, fname, ...args] = process.argv;
 const tops = readTop(readFileSync(fname, 'utf8'));
-console.log(tops);
-tops.map(parseTop);
-console.log('nice', showNice(Force(named.main)));
+// console.log(tops);
+tops.forEach(parseTop);
+// console.log('nice', showNice(Force(named.main)));
 // Object.entries(named).forEach(([name, v]) => {
 //     console.log(name, v);
 // });
+
 if (args.length) {
     console.log(
         showNice(

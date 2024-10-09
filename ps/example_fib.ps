@@ -37,7 +37,9 @@
 
 (defn fib [_] (0 (1 (zipWith + (fib 0) (drop 1 (fib 0))))))
 
-(defn inf [_] (0 (1 (inf 4))))
+;(defn fib [_] (0 (1 (zipWith + $0 (drop 1 $0)))))
+
+(defn inf [_] (0 (1 (2 $0))))
 
 (defn take [n lst]
     (ncase n nil (fn [n_]
@@ -56,5 +58,7 @@
 ; (defn main [_] (lcase (98 (99 (100 0))) 23 (fn [head tail] head)) )
 
 (def iii (0 (1 iii)))
+
+; (defn main [_] ((inf 10) (take 5 (inf 10))))
 
 (defn main [_] (fibs 10))

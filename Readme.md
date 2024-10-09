@@ -10,5 +10,8 @@ bun index.ts
 bun ps/run.ts ps/example_fib.clj
 ## and with an argument
 bun ps/run.ts ps/example_fib.clj 15
+# this is what it outpus:
+# PIN 0: (def nil 0)
+# (0 (1 (1 (2 (3 (5 (8 (13 (21 (34 (55 (89 (144 (233 (377 nil)))))))))))))))
 ```
 

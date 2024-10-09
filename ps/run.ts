@@ -233,7 +233,8 @@ if (args.length) {
     console.log(
         showNice(
             Force(APPS(named.main, ...args.map((a): Val => [NAT, BigInt(+a)]))),
-            // true,
         ),
     );
+} else {
+    console.log(showNice(Force(named.main)));
 }

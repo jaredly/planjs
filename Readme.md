@@ -2,13 +2,13 @@
 
 To run, I've been using `bun`.
 
-```
-npm install
-bun take4.ts
-```
-
-or if you don't have/like bun
-```
-node take4.js
+```bash
+pnpm install
+# the tests
+bun index.ts
+# try running my lisp syntax
+bun ps/run.ts ps/example_fib.clj
+## and with an argument
+bun ps/run.ts ps/example_fib.clj 15
 ```
 

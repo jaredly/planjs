@@ -379,7 +379,9 @@ const E = (o: Val): IVal => {
                         .map((n, i) => `$${ansis.red(i + '')}=${show(n)}`)
                         .join(', ')}`,
                 );
-            return E(env[Number(o.v[2])]);
+            const idx = Number(o.v[2]);
+            env[idx] = E(env[idx]);
+            return env[idx] as IVal;
         }
         case PIN:
         case LAW:
@@ -391,10 +393,11 @@ const E = (o: Val): IVal => {
         // env[0] = res;
         // return E(res);
         case APP:
-            const target = E(o.v[1]);
-            o = { v: [APP, target, o.v[2]] };
+            o.v[1] = E(o.v[1]);
+            // o = { v: [APP, target, o.v[2]] };
+            // o = { v: [APP, target, o.v[2]] };
             // const items = appArgs(o);
-            return A(target) === 1 ? E(X(o, o)) : (o as IVal);
+            return A(o.v[1] as IVal) === 1 ? E(X(o, o)) : (o as IVal);
         case NAT:
             return o as IVal;
     }

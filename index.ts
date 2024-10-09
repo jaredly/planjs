@@ -29,20 +29,20 @@ const mapp =
     (...args: (Val | number)[]) =>
         APPS(op, ...args);
 
-const n = (n: number): Val => [NAT, BigInt(n)];
-const inc = mapp([PIN, n(OPS.INC)]);
-const law = mapp([PIN, n(OPS.LAW)]);
-const pin = mapp([PIN, n(OPS.PIN)]);
-const ncase = mapp([PIN, n(OPS.NCASE)]);
-const pcase = mapp([PIN, n(OPS.PCASE)]);
+const n = (n: number): Val => ({ v: [NAT, BigInt(n)] });
+const inc = mapp({ v: [PIN, n(OPS.INC)] });
+const law = mapp({ v: [PIN, n(OPS.LAW)] });
+const pin = mapp({ v: [PIN, n(OPS.PIN)] });
+const ncase = mapp({ v: [PIN, n(OPS.NCASE)] });
+const pcase = mapp({ v: [PIN, n(OPS.PCASE)] });
 const toNat = mapp(ncase(n(0), inc()));
 
 const _ = APPS;
 
-chk('nat', [NAT, 5n], inc(4));
+chk('nat', { v: [NAT, 5n] }, inc(4));
 
-chk('law', [LAW, 1n, 2n, n(3)], law(1, 2, 3));
-chk('pin', [PIN, n(5)], pin(inc(4)));
+chk('law', { v: [LAW, 1n, 2n, n(3)] }, law(1, 2, 3));
+chk('pin', { v: [PIN, n(5)] }, pin(inc(4)));
 
 chk('ncase', n(9), toNat(n(9)));
 chk('ncase2', n(0), toNat(pin(n(9))));
@@ -52,7 +52,7 @@ chk('_L__', APPS(1, 2, 3, 4), pcase(0, 1, 0, 0, law(2, 3, 4)));
 chk('__A_', _(1, 2, 3), pcase(0, 0, 1, 0, _(2, 3)));
 chk('___N', _(1, 2), pcase(0, 0, 0, 1, 2));
 
-chk('basic law (self)', [LAW, 0n, 2n, n(0)], law(0, 2, 0, 7, 8));
+chk('basic law (self)', { v: [LAW, 0n, 2n, n(0)] }, law(0, 2, 0, 7, 8));
 chk('basic law (arg 1)', n(7), law(0, 2, 1, 7, 8));
 chk('basic law (arg 2)', n(8), law(0, 2, 2, 7, 8));
 chk('basic law (const)', n(3), law(0, 2, 3, 7, 8));
@@ -82,12 +82,20 @@ chk(
     appHead(law(99, 1, llet(lapp(1 /*arg*/, 2 /*self*/), 2), 100)),
 );
 
-chk('pinlaw', [LAW, 1n, 2n, n(0)], pin(law(), 1, 2, 0));
-chk('pinlaw2', [LAW, 1n, 2n, n(0)], pin(law(1), 2, 0));
-chk('pinlaw3', [PIN, [LAW, 1n, 2n, n(0)]], pin(law(1, 2, 0), 3, 4));
+chk('pinlaw', { v: [LAW, 1n, 2n, n(0)] }, pin(law(), 1, 2, 0));
+chk('pinlaw2', { v: [LAW, 1n, 2n, n(0)] }, pin(law(1), 2, 0));
+chk(
+    'pinlaw3',
+    { v: [PIN, { v: [LAW, 1n, 2n, n(0)] }] },
+    pin(law(1, 2, 0), 3, 4),
+);
 // HMMM is this supposed to collapse?
-// chk('pinlaw4', [PIN, [LAW, 1, 2, n(0)]], pin(pin(law(1, 2, 0)), 3, 4));
-chk('pinlaw4', [PIN, [PIN, [LAW, 1n, 2n, n(0)]]], pin(pin(law(1, 2, 0)), 3, 4));
+// chk('pinlaw4', {v:[PIN, {v:[LAW, 1, 2, n(0)]}]}, pin(pin(law(1, 2, 0)), 3, 4));
+chk(
+    'pinlaw4',
+    { v: [PIN, { v: [PIN, { v: [LAW, 1n, 2n, n(0)] }] }] },
+    pin(pin(law(1, 2, 0)), 3, 4),
+);
 
 chk('arg 1', n(9), law(0, 1, 1, 9));
 chk('arg n stuff', n(8), law(0, 1, llet(1, 2), 8));
@@ -169,7 +177,11 @@ const headF = law(
 const tag = law(0, 1, lapp(toNat(), lapp(headF, 1))); //
 
 chk('head of closure', n(7), _(headF, _(7, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
-chk('head law', [PIN, [NAT, BigInt(OPS.LAW)]], _(headF, law(1, 2)));
+chk(
+    'head law',
+    { v: [PIN, { v: [NAT, BigInt(OPS.LAW)] }] },
+    _(headF, law(1, 2)),
+);
 
 // -- tag of ADT (head cast to nat)
 chk('tag of ADT', n(7), _(tag, _(7, 1, 2, 3, 4, 5, 6, 7, 8, 9)));

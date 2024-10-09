@@ -73,34 +73,35 @@ const show = (v: AST, pins: Pins): string => {
     }
 };
 
-const parseBody = (val: Val, trace: Val[], pins: Pins): AST => {
-    if (trace.includes(val)) {
-        const at = trace.indexOf(val);
+const parseBody = (v: Val, trace: Val[], pins: Pins): AST => {
+    if (trace.includes(v)) {
+        const at = trace.indexOf(v);
         return { type: 'recurse', level: trace.length - at };
     }
     const otrace = trace;
-    trace = [...trace, val];
+    trace = [...trace, v];
+    const { v: val } = v;
 
     if (val[0] === APP) {
         const [_, f1, arg1] = val;
-        if (f1[0] === APP) {
-            const [_, f2, arg2] = f1;
-            if (f2[0] === NAT) {
-                if (f2[1] === 0n) {
+        if (f1.v[0] === APP) {
+            const [_, f2, arg2] = f1.v;
+            if (f2.v[0] === NAT) {
+                if (f2.v[1] === 0n) {
                     const arg = parseBody(arg1, trace, pins);
                     if (
                         !REQUIRE_OP_PIN &&
-                        arg2[0] === APP &&
-                        arg2[1][0] === NAT &&
-                        arg2[1][1] === 2n &&
-                        arg2[2][0] === NAT &&
-                        arg2[2][1] <= 4
+                        arg2.v[0] === APP &&
+                        arg2.v[1].v[0] === NAT &&
+                        arg2.v[1].v[1] === 2n &&
+                        arg2.v[2].v[0] === NAT &&
+                        arg2.v[2].v[1] <= 4
                     ) {
                         return {
                             type: 'app',
                             target: {
                                 type: 'primop',
-                                op: Number(arg2[2][1]) as 4,
+                                op: Number(arg2.v[2].v[1]) as 4,
                             },
                             arg,
                         };
@@ -111,7 +112,7 @@ const parseBody = (val: Val, trace: Val[], pins: Pins): AST => {
                         arg,
                     };
                 }
-                if (f2[1] === 1n) {
+                if (f2.v[1] === 1n) {
                     return {
                         type: 'let',
                         value: parseBody(arg2, trace, pins),
@@ -120,7 +121,7 @@ const parseBody = (val: Val, trace: Val[], pins: Pins): AST => {
                 }
             }
         }
-        if (f1[0] === NAT && f1[1] === 2n) {
+        if (f1.v[0] === NAT && f1.v[1] === 2n) {
             return parse(arg1, trace, pins);
         }
     }
@@ -128,21 +129,22 @@ const parseBody = (val: Val, trace: Val[], pins: Pins): AST => {
         return { type: 'maybe-ref', value: val[1] };
     }
 
-    return parse(val, otrace, pins);
+    return parse(v, otrace, pins);
 };
 
 type Pins = { ast: AST; val: Val }[];
 
-export const parse = (val: Val, trace: Val[], pins: Pins): AST => {
-    if (trace.includes(val)) {
-        const at = trace.indexOf(val);
+export const parse = (v: Val, trace: Val[], pins: Pins): AST => {
+    if (trace.includes(v)) {
+        const at = trace.indexOf(v);
         return { type: 'recurse', level: trace.length - at };
     }
-    trace = [...trace, val];
+    trace = [...trace, v];
+    const { v: val } = v;
     switch (val[0]) {
         case PIN:
-            if (val[1][0] === NAT && val[1][1] <= 4n) {
-                return { type: 'primop', op: Number(val[1][1]) as 4 };
+            if (val[1].v[0] === NAT && val[1].v[1] <= 4n) {
+                return { type: 'primop', op: Number(val[1].v[1]) as 4 };
             }
             const got = pins.findIndex((p) => equal(p.val, val[1]));
             if (got !== -1) {
@@ -160,10 +162,10 @@ export const parse = (val: Val, trace: Val[], pins: Pins): AST => {
                 body: parseBody(val[3], trace, pins),
             };
         case APP:
-            if (val[1][0] === NAT && val[1][1] <= 4n && !REQUIRE_OP_PIN) {
+            if (val[1].v[0] === NAT && val[1].v[1] <= 4n && !REQUIRE_OP_PIN) {
                 return {
                     type: 'app',
-                    target: { type: 'primop', op: Number(val[1][1]) as 4 },
+                    target: { type: 'primop', op: Number(val[1].v[1]) as 4 },
                     arg: parse(val[2], trace, pins),
                 };
             }

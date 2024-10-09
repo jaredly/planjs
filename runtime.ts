@@ -12,12 +12,10 @@ type tNAT = 3;
 type tREF = 4;
 type nat = bigint;
 // immadiate (not lazy)
-type IVal =
-    | [tPIN, Val]
-    | [tLAW, nat, nat, Val]
-    | [tAPP, Val, Val]
-    | [tNAT, nat];
-export type Val = IVal | [tREF, Val[], bigint];
+type IVal = {
+    v: [tPIN, Val] | [tLAW, nat, nat, Val] | [tAPP, Val, Val] | [tNAT, nat];
+};
+export type Val = { v: IVal['v'] | [tREF, Val[], bigint] };
 
 export const PIN: tPIN = 0;
 export const LAW: tLAW = 1;
@@ -206,20 +204,21 @@ type Ctx = {
 };
 
 export const show = (
-    v: Val,
+    val: Val,
     ctx: Ctx = { hidePinLaw: false, trace: [] },
 ): string => {
-    if (ctx.trace.includes(v)) {
-        const at = ctx.trace.indexOf(v);
+    if (ctx.trace.includes(val)) {
+        const at = ctx.trace.indexOf(val);
         return `<recurse ^${ctx.trace.length - at}>`;
     }
-    ctx = { ...ctx, trace: [...ctx.trace, v] };
+    ctx = { ...ctx, trace: [...ctx.trace, val] };
     // ctx = [...ctx, v];
     const c = colors[ctx.trace.length % colors.length];
+    const { v } = val;
 
     switch (v[0]) {
         case PIN:
-            if (ctx.hidePinLaw && v[1][0] === LAW) {
+            if (ctx.hidePinLaw && v[1].v[0] === LAW) {
                 return c(`<law>`);
             }
             return c(`<${show(v[1], ctx)}>`);
@@ -239,7 +238,7 @@ export const show = (
         case APP:
             // return c(`(${show(v[1], ctx)} ${show(v[2], ctx)})`);
             return c(
-                `(${appArgs(v)
+                `(${appArgs(val)
                     .map((m) => show(m, ctx))
                     .join(' ')})`,
             );
@@ -267,26 +266,26 @@ export let LOG = false;
  *      > if the function cannot be applied, it probably ought to error
  * Nat: if it's an opcode, then the arity of the primop. otherwise *should* be 0
  */
-const A = (o: IVal): number => {
-    switch (o[0]) {
+const A = ({ v }: IVal): number => {
+    switch (v[0]) {
         case PIN:
-            const p = o[1];
-            if (p[0] === NAT) {
-                return (p[1] <= 5 ? opArity[Number(p[1]) as 0] : 0) ?? 1;
+            const p = v[1];
+            if (p.v[0] === NAT) {
+                return (p.v[1] <= 5 ? opArity[Number(p.v[1]) as 0] : 0) ?? 1;
             }
-            return A(E(o[1]));
+            return A(E(v[1]));
         case LAW:
-            return Number(o[2]);
+            return Number(v[2]);
         case APP: {
             // NOTE: is this good here?
-            const head = A(E(o[1]));
+            const head = A(E(v[1]));
             return head === 0 ? 0 : head - 1;
         }
         case NAT: {
             if (REQUIRE_OP_PIN) {
                 return 0;
             }
-            return opArity[Number(o[1]) as 0] ?? 0;
+            return opArity[Number(v[1]) as 0] ?? 0;
             // return 0; // opArity[o[1] as 0] ?? 0;
         }
     }
@@ -294,7 +293,7 @@ const A = (o: IVal): number => {
 
 // asNat
 const N = (o: Val): bigint => {
-    const norm = E(o);
+    const { v: norm } = E(o);
     if (norm[0] === NAT) return norm[1];
     return 0n;
     // throw new Error(`not a nat`);
@@ -310,33 +309,33 @@ const L = (env: Val[], value: Val, body: Val): Val => {
 
 // Run a Law
 const R = (env: Val[], body: Val): Val => {
-    if (body[0] === NAT) {
-        return [REF, env, body[1]];
+    if (body.v[0] === NAT) {
+        return { v: [REF, env, body.v[1]] };
     }
-    if (body[0] === APP) {
-        const f = F(body[1]);
-        const g = F(body[2]);
+    if (body.v[0] === APP) {
+        const f = F(body.v[1]);
+        const g = F(body.v[2]);
         // APP(f,                     g)
         // APP(APP(f_inner, g_inner), g)
-        if (f[0] === APP) {
-            const f_inner = F(f[1]);
-            const g_inner = F(f[2]);
-            if (f_inner[0] === NAT) {
+        if (f.v[0] === APP) {
+            const f_inner = F(f.v[1]);
+            const g_inner = F(f.v[2]);
+            if (f_inner.v[0] === NAT) {
                 // (f x)
-                if (f_inner[1] === 0n) {
+                if (f_inner.v[1] === 0n) {
                     const f = g_inner;
                     const x = g;
-                    return [APP, R(env, f), R(env, x)];
+                    return { v: [APP, R(env, f), R(env, x)] };
                 }
                 // (let v in b)
-                if (f_inner[1] === 1n) {
+                if (f_inner.v[1] === 1n) {
                     const v = g_inner;
                     const b = g;
                     return L(env, v, b);
                 }
             }
         }
-        if (f[0] === NAT && f[1] === 2n) {
+        if (f.v[0] === NAT && f.v[1] === 2n) {
             return g;
         }
     }
@@ -346,12 +345,12 @@ const R = (env: Val[], body: Val): Val => {
 
 export type Input = Val | number;
 export const asVal = (v: Input): Val =>
-    typeof v === 'number' ? [NAT, BigInt(v)] : v;
+    typeof v === 'number' ? { v: [NAT, BigInt(v)] } : v;
 
 export const APPS = (target: Input, ...args: Input[]): Val => {
     target = asVal(target);
     while (args.length) {
-        target = [APP, target, asVal(args.shift()!)];
+        target = { v: [APP, target, asVal(args.shift()!)] };
     }
     return target;
 };
@@ -359,30 +358,32 @@ export const APPS = (target: Input, ...args: Input[]): Val => {
 // force (unlazy recursively)
 const F = (o: Val): Val => {
     o = E(o);
-    return o[0] === APP ? [APP, F(o[1]), F(o[2])] : o;
+    return o.v[0] === APP ? { v: [APP, F(o.v[1]), F(o.v[2])] } : o;
 };
 
 const E = (o: Val): IVal => {
     if (LOG) console.log(`E`, show(o));
-    switch (o[0]) {
+    switch (o.v[0]) {
         case REF: {
-            const env = o[1];
-            if (o[2] >= env.length) {
+            const env = o.v[1];
+            if (o.v[2] >= env.length) {
                 if (LOG)
-                    console.log(`idx out of bound ${o[2]} - env ${env.length}`);
-                return [NAT, o[2]];
+                    console.log(
+                        `idx out of bound ${o.v[2]} - env ${env.length}`,
+                    );
+                return { v: [NAT, o.v[2]] };
             }
             if (LOG)
                 console.log(
-                    `getting idx ${o[2]} from env ${env
+                    `getting idx ${o.v[2]} from env ${env
                         .map((n, i) => `$${ansis.red(i + '')}=${show(n)}`)
                         .join(', ')}`,
                 );
-            return E(env[Number(o[2])]);
+            return E(env[Number(o.v[2])]);
         }
         case PIN:
         case LAW:
-            return o;
+            return o as IVal;
         // if (o[2] !== 0n) return o;
         // const b = o[3];
         // const env: Val[] = [[NAT, 0n]];
@@ -390,40 +391,43 @@ const E = (o: Val): IVal => {
         // env[0] = res;
         // return E(res);
         case APP:
-            const target = E(o[1]);
-            o = [APP, target, o[2]];
+            const target = E(o.v[1]);
+            o = { v: [APP, target, o.v[2]] };
             // const items = appArgs(o);
-            return A(target) === 1 ? E(X(o, o)) : o;
+            return A(target) === 1 ? E(X(o, o)) : (o as IVal);
         case NAT:
-            return o;
+            return o as IVal;
     }
 };
 
 const OP_PIN = (x: Val): Val => (
-    LOG && console.log('PIN', show(x)), [PIN, F(x)]
+    LOG && console.log('PIN', show(x)), { v: [PIN, F(x)] }
 );
 
-const OP_LAW = (n: Val, a: Val, b: Val): Val => [LAW, N(n), N(a), F(b)];
+const OP_LAW = (n: Val, a: Val, b: Val): Val => ({
+    v: [LAW, N(n), N(a), F(b)],
+});
 
-const OP_INC = (n: Val): Val => [NAT, N(n) + 1n];
+const OP_INC = (n: Val): Val => ({ v: [NAT, N(n) + 1n] });
 
 const OP_NCASE = (z: Val, p: Val, x: Val): Val => {
     const n = N(x);
-    return n === 0n ? z : APPS(p, [NAT, n - 1n]);
+    return n === 0n ? z : APPS(p, { v: [NAT, n - 1n] });
 };
 
 const OP_PCASE = (p: Val, l: Val, a: Val, n: Val, x: Val): Val => {
     x = E(x);
-    switch (x[0]) {
+    switch (x.v[0]) {
         case PIN:
-            return APPS(p, x[1]);
+            return APPS(p, x.v[1]);
         case LAW:
-            return APPS(l, [NAT, x[1]], [NAT, x[2]], x[3]);
+            return APPS(l, { v: [NAT, x.v[1]] }, { v: [NAT, x.v[2]] }, x.v[3]);
         case APP:
-            return APPS(a, x[1], x[2]);
+            return APPS(a, x.v[1], x.v[2]);
         case NAT:
             return APPS(n, x);
     }
+    throw new Error('unreadachble?');
 };
 
 const OP_FNS = {
@@ -436,14 +440,14 @@ const OP_FNS = {
 
 // turn a nested APP(APP(APP(a,b),c),d) into [a,b,c,d]
 const appArgs = (val: Val): Val[] => {
-    if (val[0] === PIN && val[1][0] === APP) return appArgs(val[1]);
-    return val[0] === APP ? [...appArgs(val[1]), val[2]] : [val];
+    if (val.v[0] === PIN && val.v[1].v[0] === APP) return appArgs(val.v[1]);
+    return val.v[0] === APP ? [...appArgs(val.v[1]), val.v[2]] : [val];
 };
 
 // get the "root" of a nested APP
 const first = (val: Val): Val => {
-    if (val[0] === APP || (val[0] === PIN && val[1][0] === APP))
-        return first(val[1]);
+    if (val.v[0] === APP || (val.v[0] === PIN && val.v[1].v[0] === APP))
+        return first(val.v[1]);
     return val;
 };
 
@@ -455,11 +459,11 @@ const X = (target: Val, environment: Val): Val => {
             show(target),
             appArgs(environment).map((m) => show(m)),
         );
-    switch (target[0]) {
+    switch (target.v[0]) {
         case PIN:
-            const inner = target[1];
-            if (inner[0] === NAT) {
-                const code = Number(inner[1]) as OPCODE;
+            const inner = target.v[1];
+            if (inner.v[0] === NAT) {
+                const code = Number(inner.v[1]) as OPCODE;
                 const f = OP_FNS[code];
                 if (!f) return target;
                 const args = appArgs(environment).slice(1);
@@ -469,12 +473,12 @@ const X = (target: Val, environment: Val): Val => {
                 if (perf != null) perf.ops[code]++;
                 return f(...(args as [Val, Val, Val, Val, Val]));
             }
-            return X(E(target[1]), environment);
+            return X(E(target.v[1]), environment);
         case NAT: {
             if (REQUIRE_OP_PIN) {
                 return target;
             }
-            const code = Number(target[1]) as OPCODE;
+            const code = Number(target.v[1]) as OPCODE;
             const f = OP_FNS[code];
             if (!f) {
                 return target;
@@ -487,7 +491,7 @@ const X = (target: Val, environment: Val): Val => {
             return f(...(args as [Val, Val, Val, Val, Val]));
         }
         case LAW: {
-            const [_, name, arity, b] = target;
+            const [_, name, arity, b] = target.v;
             const args = appArgs(environment);
             if (perf) {
                 const nm = natToAscii(name);
@@ -505,7 +509,7 @@ const X = (target: Val, environment: Val): Val => {
             return R(args, b);
         }
         case APP: {
-            return X(first(target[1]), environment);
+            return X(first(target.v[1]), environment);
         }
     }
     return target;

@@ -53,10 +53,12 @@ export const parseTop = (top: Sexp) => {
         //     throw new Error(`undefined variables in toplevel: ${needed}`);
         // }
         const body = parse(top[3], { args, name: top[1], lcount: 0 });
-        named[top[1]] = [
-            PIN,
-            [LAW, asciiToNat(top[1]), BigInt(top[2].length), body],
-        ];
+        named[top[1]] = {
+            v: [
+                PIN,
+                { v: [LAW, asciiToNat(top[1]), BigInt(top[2].length), body] },
+            ],
+        };
         return;
     }
     if (top.length === 3 && top[0] === 'def' && typeof top[1] === 'string') {
@@ -65,15 +67,19 @@ export const parseTop = (top: Sexp) => {
         free(top[2], args, needed);
         needed = needed.filter((n) => !named[n] && !OPS[n as 'LAW']);
 
-        named[top[1]] = [
-            PIN,
-            [
-                LAW,
-                asciiToNat(top[1]),
-                0n,
-                parse(top[2], { args, name: top[1], lcount: 0 }),
+        named[top[1]] = {
+            v: [
+                PIN,
+                {
+                    v: [
+                        LAW,
+                        asciiToNat(top[1]),
+                        0n,
+                        parse(top[2], { args, name: top[1], lcount: 0 }),
+                    ],
+                },
             ],
-        ];
+        };
         return;
     }
     throw new Error(`canot parse top ${JSON.stringify(top)}`);
@@ -107,13 +113,15 @@ export const free = (v: Sexp, scope: string[], vbls: string[]) => {
     v.forEach((v) => free(v, scope, vbls));
 };
 
-const law_const = (v: Val): Val => [APP, [NAT, 2n], v];
+const law_const = (v: Val): Val => ({ v: [APP, { v: [NAT, 2n] }, v] });
 
 const lapps = (inLaw: boolean, ...items: Val[]): Val => {
     if (inLaw) {
         let target = items[0];
         for (let i = 1; i < items.length; i++) {
-            target = [APP, [APP, [NAT, 0n], target], items[i]];
+            target = {
+                v: [APP, { v: [APP, { v: [NAT, 0n] }, target] }, items[i]],
+            };
         }
         return target;
     } else {
@@ -129,22 +137,22 @@ const parse = (
         if (item[0] === '$') {
             const n = Number(item.slice(1));
             if (Number.isInteger(n)) {
-                return [NAT, BigInt(n)];
+                return { v: [NAT, BigInt(n)] };
             }
         }
         const n = Number(item);
         if (Number.isInteger(n)) {
             if (parent != null) {
                 // law-const
-                return law_const([NAT, BigInt(n)]);
+                return law_const({ v: [NAT, BigInt(n)] });
             } else {
-                return [NAT, BigInt(n)];
+                return { v: [NAT, BigInt(n)] };
             }
         }
         if (parent != null) {
             const idx = parent.args.indexOf(item);
             // law-ref
-            if (idx !== -1) return [NAT, BigInt(idx)];
+            if (idx !== -1) return { v: [NAT, BigInt(idx)] };
         }
         if (named[item]) {
             if (parent) {
@@ -156,7 +164,7 @@ const parse = (
             return named[item];
         }
         if (OPS[item as 'LAW']) {
-            return [PIN, [NAT, BigInt(OPS[item as 'LAW'])]];
+            return { v: [PIN, { v: [NAT, BigInt(OPS[item as 'LAW'])] }] };
         }
         throw new Error(`undefined ref ${item}`);
     }
@@ -207,7 +215,7 @@ const parse = (
                 name: 'anon',
                 lcount: 0,
             });
-            return [LAW, asciiToNat('anon'), BigInt(ln), body];
+            return { v: [LAW, asciiToNat('anon'), BigInt(ln), body] };
         }
         let needed: string[] = [];
         free(item[2], innerArgs, needed);
@@ -229,13 +237,13 @@ const parse = (
             lcount: 0,
         });
         // TODO: scoping, need to wrap if used.
-        const law: Val = [LAW, asciiToNat(name), BigInt(ln), body];
+        const law: Val = { v: [LAW, asciiToNat(name), BigInt(ln), body] };
         if (needed.length) {
             return lapps(
                 parent != null,
                 law,
                 ...needed.map(
-                    (n): Val => [NAT, BigInt(parent.args.indexOf(n))],
+                    (n): Val => ({ v: [NAT, BigInt(parent.args.indexOf(n))] }),
                 ),
             );
         }
@@ -268,7 +276,12 @@ trackPerf();
 if (args.length) {
     console.log(
         showNice(
-            Force(APPS(named.main, ...args.map((a): Val => [NAT, BigInt(+a)]))),
+            Force(
+                APPS(
+                    named.main,
+                    ...args.map((a): Val => ({ v: [NAT, BigInt(+a)] })),
+                ),
+            ),
         ),
     );
 } else {
@@ -276,25 +289,34 @@ if (args.length) {
 }
 showPerf(reportPerf()!);
 
-// const all: Record<string, number>[] = [];
-// const allNames: string[] = [];
-// for (let i = 0; i < 15; i++) {
-//     trackPerf();
-//     Force(APPS(named.main, ...args.map((a): Val => [NAT, BigInt(i)])));
-//     const line = perfMap(reportPerf()!);
-//     all.push(line);
-//     Object.keys(line).forEach((name) => {
-//         if (!allNames.includes(name)) {
-//             allNames.push(name);
-//         }
-//     });
-// }
-// allNames.sort();
-// writeFileSync(
-//     './perf.csv',
-//     allNames.join(',') +
-//         '\n' +
-//         all
-//             .map((row) => allNames.map((name) => row[name] ?? 0).join(','))
-//             .join('\n'),
-// );
+const make_chart = false;
+
+if (make_chart) {
+    const all: Record<string, number>[] = [];
+    const allNames: string[] = [];
+    for (let i = 0; i < 15; i++) {
+        trackPerf();
+        Force(
+            APPS(
+                named.main,
+                ...args.map((a): Val => ({ v: [NAT, BigInt(i)] })),
+            ),
+        );
+        const line = perfMap(reportPerf()!);
+        all.push(line);
+        Object.keys(line).forEach((name) => {
+            if (!allNames.includes(name)) {
+                allNames.push(name);
+            }
+        });
+    }
+    allNames.sort();
+    writeFileSync(
+        './perf.csv',
+        allNames.join(',') +
+            '\n' +
+            all
+                .map((row) => allNames.map((name) => row[name] ?? 0).join(','))
+                .join('\n'),
+    );
+}

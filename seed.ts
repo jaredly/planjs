@@ -22,19 +22,19 @@ import { showNice } from './pst';
 export const expToVal = (exp: Exp): Val => {
     switch (exp.tag) {
         case 'Cell':
-            return [APP, expToVal(exp.f), expToVal(exp.x)];
+            return { v: [APP, expToVal(exp.f), expToVal(exp.x)] };
         case 'Word':
             if (exp.w === null) {
                 throw new Error('nulll');
             }
-            return [NAT, exp.w];
+            return { v: [NAT, exp.w] };
         case 'Bigy':
             let v = 0n;
             for (let i = 0; i < exp.buf.length; i++) {
                 v <<= 64n;
                 v |= exp.buf[i];
             }
-            return [NAT, v];
+            return { v: [NAT, v] };
     }
 };
 
@@ -215,7 +215,12 @@ if (args.length) {
     trackPerf();
     console.log(
         showNice(
-            Force(APPS(resolved, ...args.map((a): Val => [NAT, BigInt(+a)]))),
+            Force(
+                APPS(
+                    resolved,
+                    ...args.map((a): Val => ({ v: [NAT, BigInt(+a)] })),
+                ),
+            ),
         ),
     );
     showPerf(reportPerf()!);

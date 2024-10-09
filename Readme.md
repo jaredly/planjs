@@ -1,6 +1,6 @@
-# PLAN but make it javascript
+# [PLAN](https://github.com/operating-function/pallas/) but make it javascript
 
-To run, I've been using `bun`.
+To run, I've been using [bun](https://bun.sh/).
 
 ```bash
 pnpm install

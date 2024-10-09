@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { readTop } from './readTop';
-import { APPS, Force, setRequireOpPin } from '../runtime/runtime';
+import { APPS, Force, setRequireOpPin } from '../runtime/runtime2';
 import { asciiToNat } from '../runtime/natToAscii';
 import { APP, OPS, LAW, NAT, Val, PIN } from '../runtime/types';
 import { parse as parseNice, showNice } from '../pst';
@@ -254,13 +254,13 @@ const tops = readTop(readFileSync(fname, 'utf8'));
 // console.log(tops);
 tops.forEach(parseTop);
 
-console.log(showNice(Force(named.main)));
+// console.log(showNice(Force(named.main)));
 
 // Object.entries(named).forEach(([name, v]) => {
 //     console.log(name, v);
 // });
 
-trackPerf();
+// trackPerf();
 if (args.length) {
     console.log(
         showNice(
@@ -275,7 +275,7 @@ if (args.length) {
 } else {
     console.log(showNice(Force(named.main)));
 }
-showPerf(reportPerf()!);
+// showPerf(reportPerf()!);
 
 const make_chart = false;
 

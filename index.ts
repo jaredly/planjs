@@ -1,6 +1,7 @@
 import equal from 'fast-deep-equal';
-import { APPS, asVal, Force, Input, show } from './runtime/runtime';
+import { APPS, asVal, Force, Input } from './runtime/runtime2';
 import { LAW, NAT, OPS, PIN, Val } from './runtime/types';
+import { show } from './runtime/show';
 
 let LOG = false;
 

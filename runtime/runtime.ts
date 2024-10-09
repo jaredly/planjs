@@ -3,152 +3,23 @@
 //
 
 import ansis from 'ansis';
+import { asciiToNat, natToAscii } from './natToAscii';
+import { perf } from './perf';
 import {
+    APP,
+    IVal,
+    LAW,
+    NAT,
+    opArity,
     OPCODE,
     OPS,
-    OPNAMES,
-    Val,
     PIN,
-    LAW,
-    APP,
-    NAT,
     REF,
-    IVal,
-    opArity,
+    Val,
 } from './types';
-import { perf } from './perf';
-import { natToAscii, asciiToNat } from './natToAscii';
+import { appArgs, show } from './show';
 
-/*
-
-pin (pointer)
-law (name [debug]) (arity number) (pointer body)
-app (pointer) (pointer)
-nat (numbre)
-
-are pointers and numbers interchangeable?
-is it ~faster to allocate a little more,
-and have the pointers always be in the same places?
-
-like
-
-0 : tag
-1 : pointer : pin|law|app
-2 : number  : law|nat
-3 : pointer : app
-4 : number  : name
-
-OR
-
-0 : tag
-1 : pointer (pin|app) or number (law|nat)
-2 : pointer (app) or number (law)
-3 : number (law name)
-
-and therefore
-we could pack a linked list in there
-
-0 : 5 (env head)
-1 : number : size
-2 : head (pointer to element)
-3 : tail (pointer to next head)
-
-0 : 6 (env tail)
-1 : head1 (pointer to element)
-2 : head2 (pointer to element)
-3 : tail (pointer to next head)
-
-
-
-....
-
-question though.
-when writing a garbage collector.
-howw do I know what is "live"?
-like how do I keep track of the stack.
-I guessss I could have like a separate
-reference-counting thing for stack variables
-or something.
-
-.....
-
-WAIT I could like ... have the root, live at
-like position 0? always?
-and then we could know.
-
-
-
-
-
-
-
-
-*/
-
-const colors = [
-    ansis.red,
-    ansis.gray,
-    ansis.green,
-    ansis.blue,
-    ansis.yellow,
-    ansis.magenta,
-];
-
-export { F as Force };
-export { show as showVal };
-
-type Ctx = {
-    hidePinLaw: boolean;
-    trace: Val[];
-};
-
-export const show = (
-    val: Val,
-    ctx: Ctx = { hidePinLaw: false, trace: [] },
-): string => {
-    if (ctx.trace.includes(val)) {
-        const at = ctx.trace.indexOf(val);
-        return `<recurse ^${ctx.trace.length - at}>`;
-    }
-    ctx = { ...ctx, trace: [...ctx.trace, val] };
-    // ctx = [...ctx, v];
-    const c = colors[ctx.trace.length % colors.length];
-    const { v } = val;
-
-    switch (v[0]) {
-        case PIN:
-            if (ctx.hidePinLaw && v[1].v[0] === LAW) {
-                return c(`<law>`);
-            }
-            return c(`<${show(v[1], ctx)}>`);
-        case LAW: {
-            // const args = [];
-            // for (let i = 0; i < v[2]; i++) {
-            //     args.push(`$${i + 1}`);
-            // }
-            // return c(
-            //     `fn ${natToAscii(v[1])} (${args.join(', ')}) ${show(
-            //         v[3],
-            //         trace,
-            //     )}}`,
-            // );
-            return c(`{${natToAscii(v[1]) || '_'} ${v[2]} ${show(v[3], ctx)}}`);
-        }
-        case APP:
-            // return c(`(${show(v[1], ctx)} ${show(v[2], ctx)})`);
-            return c(
-                `(${appArgs(val)
-                    .map((m) => show(m, ctx))
-                    .join(' ')})`,
-            );
-        case NAT:
-            return `${v[1]}`;
-        case REF:
-            return `[${v[1]
-                .map((m, i) => `${ansis.red(i + '')}=${show(m, ctx)}`)
-                .join(', ')}][${v[2]}]`;
-    }
-};
+export { F as Force, show as showVal };
 
 export let REQUIRE_OP_PIN = true;
 export const setRequireOpPin = (yes: boolean) => {
@@ -339,12 +210,6 @@ const OP_FNS = {
     [OPS.INC]: OP_INC,
     [OPS.NCASE]: OP_NCASE,
     [OPS.PCASE]: OP_PCASE,
-};
-
-// turn a nested APP(APP(APP(a,b),c),d) into [a,b,c,d]
-const appArgs = (val: Val): Val[] => {
-    if (val.v[0] === PIN && val.v[1].v[0] === APP) return appArgs(val.v[1]);
-    return val.v[0] === APP ? [...appArgs(val.v[1]), val.v[2]] : [val];
 };
 
 // get the "root" of a nested APP

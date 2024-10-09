@@ -83,23 +83,24 @@ E(Law(_, 0, body)) =
   env.push(res)
   res
 E(v@Law)         = v
-E(App(fn, arg))  =
-  fn = E(fn)
-  items = appList(fn) ++ [arg]
-  A(fn) == 1 ? E(X(App(fn, arg), items)) : App(fn, arg)
+E(v@App(fn, arg))  =
+  v.fn = E(fn)
+  if A(fn) == 1
+    v <- X(v, v) // in-place update!
+    E(v)
+  else
+    v
 E(v@Nat)         = v
 E(Ref(env, idx)) = idx < len(env) ? E(env[idx]) : Nat(idx)
 
-appList(App(fn, arg)) = [...appList(fn), arg]
-appList(v)            = [v]
-
 // e[X]ecute ~target:Val ~environment:Val[] -> Val
 // Execute primops, evaluate law bodies, perform function application.
-X(Pin(Nat(0)), [v])             = Pin(v)
-X(Pin(Nat(1)), [n, a, b])       = Law(n, a, b)
-X(Pin(Nat(2)), [v])             = Nat(N(v) + 1)
-X(Pin(Nat(3)), [z, p, v])       = N(v) == 0 ? z : App(p, Nat(N(v) - 1))
-X(Pin(Nat(4)), [p, l, a, n, x]) = P(p, l, a, n, x)
+// (n, a, b) is short for App(App(n, a), b)
+X(Pin(Nat(0)), v)               = Pin(v)
+X(Pin(Nat(1)), (n, a, b))       = Law(n, a, b)
+X(Pin(Nat(2)), v)               = Nat(N(v) + 1)
+X(Pin(Nat(3)), (z, p, v))       = N(v) == 0 ? z : App(p, Nat(N(v) - 1))
+X(Pin(Nat(4)), (p, l, a, n, x)) = P(p, l, a, n, x)
 X(Pin(v), env)                  = X(E(v), env)
 X(Law(_, _, body), env)         = R(env, body)
 X(App(fn, _), env)              = X(fn, env)

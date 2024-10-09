@@ -7,8 +7,15 @@ ok there's gotta be something screwy happening here, because:
   yeah I think... I need to ... ~store the result of the laziness.
   lol ok.
 
+OK so `o <- X(o,o)`
+was the real deal.
 
+AND:
+now jetting + is the deciding factor!
+yay.
+so we can generate essentially unlimited fibonacci numbers!
 
+So, the only /in-place update/ that's needed is E((f x)) o <- X(o,o)
 
 
 # PALLAS but make it javascript

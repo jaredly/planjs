@@ -87,9 +87,11 @@ export const showPerf = (perf: Perf) => {
         console.log(` - ${OPNAMES[+code]} : ${count}`);
     });
     console.log(ansis.blue('laws'));
-    Object.entries(perf.laws).forEach(([name, count]) => {
-        console.log(` - ${name} : ${count}`);
-    });
+    Object.keys(perf.laws)
+        .sort()
+        .forEach((name) => {
+            console.log(` - ${name || '<anon>'} : ${perf.laws[name]}`);
+        });
 };
 
 /*
@@ -380,8 +382,7 @@ const E = (o: Val): IVal => {
                         .join(', ')}`,
                 );
             const idx = Number(o.v[2]);
-            env[idx] = E(env[idx]);
-            return env[idx] as IVal;
+            return E(env[idx]);
         }
         case PIN:
         case LAW:
@@ -394,10 +395,11 @@ const E = (o: Val): IVal => {
         // return E(res);
         case APP:
             o.v[1] = E(o.v[1]);
-            // o = { v: [APP, target, o.v[2]] };
-            // o = { v: [APP, target, o.v[2]] };
-            // const items = appArgs(o);
-            return A(o.v[1] as IVal) === 1 ? E(X(o, o)) : (o as IVal);
+            if (A(o.v[1] as IVal) === 1) {
+                o.v = X(o, o).v;
+                return E(o);
+            }
+            return o as IVal;
         case NAT:
             return o as IVal;
     }
@@ -504,11 +506,15 @@ const X = (target: Val, environment: Val): Val => {
                 }
             }
             // JET
-            // if (name === _plus && arity === 2n && args.length === 3) {
-            //     const a = E(args[1]);
-            //     const b = E(args[2]);
-            //     return [NAT, N(a) + N(b)];
-            // }
+            if (
+                (name === _plus || name === _add) &&
+                arity === 2n &&
+                args.length === 3
+            ) {
+                const a = E(args[1]);
+                const b = E(args[2]);
+                return { v: [NAT, N(a) + N(b)] };
+            }
             return R(args, b);
         }
         case APP: {
@@ -519,3 +525,4 @@ const X = (target: Val, environment: Val): Val => {
 };
 
 const _plus = asciiToNat('+');
+const _add = asciiToNat('_Add');

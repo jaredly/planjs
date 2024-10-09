@@ -4,6 +4,7 @@
 
 import ansis from 'ansis';
 
+// Constants up here
 type tPIN = 0;
 type tLAW = 1;
 type tAPP = 2;
@@ -24,6 +25,141 @@ export const APP: tAPP = 2;
 export const NAT: tNAT = 3;
 const REF: tREF = 4;
 
+export const OPS = {
+    LAW: 0,
+    PCASE: 1,
+    NCASE: 2,
+    INC: 3,
+    PIN: 4,
+} as const;
+
+export const OPNAMES: Record<number, string> = {};
+Object.entries(OPS).forEach(([name, val]) => (OPNAMES[val] = name));
+
+export type OPCODE = (typeof OPS)[keyof typeof OPS];
+const opArity: Record<OPCODE, number> = {
+    [OPS.PIN]: 1,
+    [OPS.LAW]: 3,
+    [OPS.INC]: 1,
+    [OPS.NCASE]: 3,
+    [OPS.PCASE]: 5,
+};
+
+type Perf = {
+    ops: Record<OPCODE, number>;
+    laws: Record<string, number>;
+    start: number;
+    end: number;
+};
+export let perf: null | Perf = null;
+
+export const trackPerf = () => {
+    perf = {
+        laws: {},
+        ops: {
+            [OPS.PIN]: 0,
+            [OPS.LAW]: 0,
+            [OPS.INC]: 0,
+            [OPS.NCASE]: 0,
+            [OPS.PCASE]: 0,
+        },
+        start: Date.now(),
+        end: 0,
+    };
+};
+export const reportPerf = (): Perf | null => {
+    if (!perf) return null;
+    const got = { ...perf, end: Date.now() };
+    perf = null;
+    return got;
+};
+export const perfMap = (perf: Perf) => {
+    const map: Record<string, number> = { ...perf.laws };
+    Object.entries(perf.ops).forEach(([code, count]) => {
+        map[OPNAMES[+code]] = count;
+    });
+    return map;
+};
+export const showPerf = (perf: Perf) => {
+    console.log(
+        ansis.green(`Time: ${((perf.end - perf.start) / 1000).toFixed(2)}s`),
+    );
+    console.log(ansis.blue('primops'));
+    Object.entries(perf.ops).forEach(([code, count]) => {
+        console.log(` - ${OPNAMES[+code]} : ${count}`);
+    });
+    console.log(ansis.blue('laws'));
+    Object.entries(perf.laws).forEach(([name, count]) => {
+        console.log(` - ${name} : ${count}`);
+    });
+};
+
+/*
+
+pin (pointer)
+law (name [debug]) (arity number) (pointer body)
+app (pointer) (pointer)
+nat (numbre)
+
+are pointers and numbers interchangeable?
+is it ~faster to allocate a little more,
+and have the pointers always be in the same places?
+
+like
+
+0 : tag
+1 : pointer : pin|law|app
+2 : number  : law|nat
+3 : pointer : app
+4 : number  : name
+
+OR
+
+0 : tag
+1 : pointer (pin|app) or number (law|nat)
+2 : pointer (app) or number (law)
+3 : number (law name)
+
+and therefore
+we could pack a linked list in there
+
+0 : 5 (env head)
+1 : number : size
+2 : head (pointer to element)
+3 : tail (pointer to next head)
+
+0 : 6 (env tail)
+1 : head1 (pointer to element)
+2 : head2 (pointer to element)
+3 : tail (pointer to next head)
+
+
+
+....
+
+question though.
+when writing a garbage collector.
+howw do I know what is "live"?
+like how do I keep track of the stack.
+I guessss I could have like a separate
+reference-counting thing for stack variables
+or something.
+
+.....
+
+WAIT I could like ... have the root, live at
+like position 0? always?
+and then we could know.
+
+
+
+
+
+
+
+
+*/
+
 const colors = [
     ansis.red,
     ansis.gray,
@@ -36,7 +172,7 @@ const colors = [
 export { F as Force };
 export { show as showVal };
 
-export const asciiToNat = (name: string) => {
+export const asciiToNat = (name: string): bigint => {
     let nat = 0n;
     for (let i = name.length - 1; i >= 0; i--) {
         nat <<= 8n;
@@ -55,7 +191,7 @@ export const natToAscii = (nat: bigint) => {
     // console.log(JSON.stringify(Number(nat)) ?? 'undefined');
     let res = '';
     const mask = (1n << 8n) - 1n;
-    for (let i = 0; i < 8; i += 1) {
+    for (let i = 0; nat > 0; i += 1) {
         const n = Number(nat & mask);
         if (n === 0) break;
         res += String.fromCharCode(n);
@@ -116,27 +252,10 @@ export const show = (
     }
 };
 
-export const OPS = {
-    LAW: 0,
-    PCASE: 1,
-    NCASE: 2,
-    INC: 3,
-    PIN: 4,
-} as const;
-
-export const OPNAMES: Record<number, string> = {};
-Object.entries(OPS).forEach(([name, val]) => (OPNAMES[val] = name));
-
-export type OPCODE = (typeof OPS)[keyof typeof OPS];
-const opArity: Record<OPCODE, number> = {
-    [OPS.PIN]: 1,
-    [OPS.LAW]: 3,
-    [OPS.INC]: 1,
-    [OPS.NCASE]: 3,
-    [OPS.PCASE]: 5,
+export let REQUIRE_OP_PIN = true;
+export const setRequireOpPin = (yes: boolean) => {
+    REQUIRE_OP_PIN = yes;
 };
-
-export const REQUIRE_OP_PIN = true;
 
 export let LOG = false;
 
@@ -262,23 +381,19 @@ const E = (o: Val): IVal => {
             return E(env[Number(o[2])]);
         }
         case PIN:
-            // if (o[1][0] === LAW) {
-            //     return o[1];
-            // }
-            return o;
         case LAW:
-            if (o[2] !== 0n) return o;
-            const b = o[3];
-            const env: Val[] = [];
-            const res = R(env, b);
-            env.push(res);
-            return E(res);
+            return o;
+        // if (o[2] !== 0n) return o;
+        // const b = o[3];
+        // const env: Val[] = [[NAT, 0n]];
+        // const res = R(env, b);
+        // env[0] = res;
+        // return E(res);
         case APP:
             const target = E(o[1]);
             o = [APP, target, o[2]];
-            const items = appArgs(target);
-            items.push(o[2]);
-            return A(target) === 1 ? E(X(o, items)) : o;
+            // const items = appArgs(o);
+            return A(target) === 1 ? E(X(o, o)) : o;
         case NAT:
             return o;
     }
@@ -333,22 +448,25 @@ const first = (val: Val): Val => {
 };
 
 // eXecute(?)
-const X = (target: Val, environment: Val[]): Val => {
+const X = (target: Val, environment: Val): Val => {
     if (LOG)
         console.log(
             `X`,
             show(target),
-            environment.map((m) => show(m)),
+            appArgs(environment).map((m) => show(m)),
         );
     switch (target[0]) {
         case PIN:
             const inner = target[1];
             if (inner[0] === NAT) {
-                const f = OP_FNS[Number(inner[1]) as OPCODE];
-                const args = environment.slice(1);
+                const code = Number(inner[1]) as OPCODE;
+                const f = OP_FNS[code];
+                if (!f) return target;
+                const args = appArgs(environment).slice(1);
                 if (args.length !== f.length) {
                     return target;
                 }
+                if (perf != null) perf.ops[code]++;
                 return f(...(args as [Val, Val, Val, Val, Val]));
             }
             return X(E(target[1]), environment);
@@ -356,24 +474,35 @@ const X = (target: Val, environment: Val[]): Val => {
             if (REQUIRE_OP_PIN) {
                 return target;
             }
-            const f = OP_FNS[Number(target[1]) as OPCODE];
+            const code = Number(target[1]) as OPCODE;
+            const f = OP_FNS[code];
             if (!f) {
                 return target;
             }
-            const args = environment.slice(1);
+            const args = appArgs(environment).slice(1);
             if (args.length !== f.length) {
                 return target;
             }
+            if (perf != null) perf.ops[code]++;
             return f(...(args as [Val, Val, Val, Val, Val]));
         }
         case LAW: {
             const [_, name, arity, b] = target;
-            if (name === _plus && arity === 2n && environment.length === 3) {
-                // const a = E(environment[1]);
-                // const b = E(environment[2]);
-                // return [NAT, N(a) + N(b)];
+            const args = appArgs(environment);
+            if (perf) {
+                const nm = natToAscii(name);
+                if (!perf.laws[nm]) perf.laws[nm] = 1;
+                else {
+                    perf.laws[nm]++;
+                }
             }
-            return R(environment, b);
+            // JET
+            // if (name === _plus && arity === 2n && args.length === 3) {
+            //     const a = E(args[1]);
+            //     const b = E(args[2]);
+            //     return [NAT, N(a) + N(b)];
+            // }
+            return R(args, b);
         }
         case APP: {
             return X(first(target[1]), environment);

@@ -5,7 +5,18 @@ type Exp =
     | { tag: 'Bigy'; sz: bigint; buf: bigint[] }
     | { tag: 'Cell'; f: Exp; x: Exp };
 
-import { APP, APPS, Force, NAT, showVal, Val } from './runtime';
+import {
+    APP,
+    APPS,
+    Force,
+    NAT,
+    reportPerf,
+    setRequireOpPin,
+    showPerf,
+    showVal,
+    trackPerf,
+    Val,
+} from './runtime';
 import { showNice } from './pst';
 
 export const expToVal = (exp: Exp): Val => {
@@ -183,18 +194,30 @@ const seed_load = (buf: DataView) => {
 
 const refSize = (n: number) => Math.ceil(Math.log2(n));
 
+// Seeds are using legacy encoding
+setRequireOpPin(false);
+
 const [_, __, inp, ...args] = process.argv;
 const main_seed = seed_load(new DataView(readFileSync(inp).buffer));
 const main_val = expToVal(main_seed);
 // console.log(showVal(Force(APPS(main_val, [NAT, 10n], [NAT, 4n]))));
-console.log(showNice(Force(main_val)));
+
+trackPerf();
+const resolved = Force(main_val);
+showPerf(reportPerf()!);
+
+console.log(showNice(resolved));
+
 // console.log(showVal(result));
 // console.log(showNice(result));
+
 if (args.length) {
+    trackPerf();
     console.log(
         showNice(
-            Force(APPS(main_val, ...args.map((a): Val => [NAT, BigInt(+a)]))),
+            Force(APPS(resolved, ...args.map((a): Val => [NAT, BigInt(+a)]))),
         ),
     );
+    showPerf(reportPerf()!);
 }
 // console.log(show(main_seed));

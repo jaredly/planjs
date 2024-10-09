@@ -1,4 +1,16 @@
 
+# Perf analysis
+
+ok there's gotta be something screwy happening here, because:
+- how am I possibly calling `drop` so many times?
+- OH WOW wait. is it laziness? OH WOW. ok.
+  yeah I think... I need to ... ~store the result of the laziness.
+  lol ok.
+
+
+
+
+
 # PALLAS but make it javascript
 
 I've got a PLAN interpreter, that has some tests passing.
@@ -11,10 +23,51 @@ I guess the law, so you can actually call recursive functions.
 
 aha ok so its working.
 
+- [ ] X probably doesn't need a list of vals, right? because it doesn't need to be mutable, right?
 
-- [ ] jet addition for crying out loud
+
+- [x] jet addition for crying out loud
   - it .. didn't help too much? idk.
-- [ ] let's get lets getting.
+- [x] let's get lets getting.
+- [ ] sooo there are a bunch of things I want. a big one would be:
+
+->> performance profiling. on the other hand, I also want like wasm compilation.
+  - wow my fib is so much better. is it just that I've de-seeded it?
+
+- [x] basic perf collection
+- [x] wow why is sire so much worse at some things
+
+OK SO
+
+When I get back to this, I want:
+
+- [ ] figure out if zipWith can be linear instead of apparently geometric?
+- [ ] track # calls to each LAW
+- [ ] to maybe translate my little VM into wasm, because boy wouldn't that be fun
+  - it's possible I wouldn't be able to figure out the memory management of it, or something.
+- [ ] thiink about a different way to do a VM? like have a managed stack or something? idk.
+
+
+whattttabouttttt like wasm.
+like ... compiling to wasm?
+orrr compiling the interpreter to wasm?
+hmmm.
+yeah I think hand-writing an interpreter would be the first step.
+
+lol so like. maybe I'll write another little compiler for a small layer on top of wasm? lol
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

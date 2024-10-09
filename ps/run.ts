@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { readTop } from './readTop';
 import {
     APP,
@@ -10,6 +10,11 @@ import {
     PIN,
     APPS,
     Force,
+    setRequireOpPin,
+    trackPerf,
+    reportPerf,
+    showPerf,
+    perfMap,
 } from '../runtime';
 import { parse as parseNice, showNice } from '../pst';
 
@@ -47,7 +52,7 @@ export const parseTop = (top: Sexp) => {
         // if (needed.length) {
         //     throw new Error(`undefined variables in toplevel: ${needed}`);
         // }
-        const body = parse(top[3], args);
+        const body = parse(top[3], { args, name: top[1], lcount: 0 });
         named[top[1]] = [
             PIN,
             [LAW, asciiToNat(top[1]), BigInt(top[2].length), body],
@@ -55,9 +60,19 @@ export const parseTop = (top: Sexp) => {
         return;
     }
     if (top.length === 3 && top[0] === 'def' && typeof top[1] === 'string') {
+        const args: string[] = [top[1]];
+        let needed: string[] = [];
+        free(top[2], args, needed);
+        needed = needed.filter((n) => !named[n] && !OPS[n as 'LAW']);
+
         named[top[1]] = [
             PIN,
-            [LAW, asciiToNat(top[1]), 0n, parse(top[2], [top[1]])],
+            [
+                LAW,
+                asciiToNat(top[1]),
+                0n,
+                parse(top[2], { args, name: top[1], lcount: 0 }),
+            ],
         ];
         return;
     }
@@ -106,7 +121,10 @@ const lapps = (inLaw: boolean, ...items: Val[]): Val => {
     }
 };
 
-const parse = (item: Sexp, args: null | string[]): Val => {
+const parse = (
+    item: Sexp,
+    parent: null | { args: string[]; name: string; lcount: number },
+): Val => {
     if (typeof item === 'string') {
         if (item[0] === '$') {
             const n = Number(item.slice(1));
@@ -116,20 +134,20 @@ const parse = (item: Sexp, args: null | string[]): Val => {
         }
         const n = Number(item);
         if (Number.isInteger(n)) {
-            if (args != null) {
+            if (parent != null) {
                 // law-const
                 return law_const([NAT, BigInt(n)]);
             } else {
                 return [NAT, BigInt(n)];
             }
         }
-        if (args != null) {
-            const idx = args.indexOf(item);
+        if (parent != null) {
+            const idx = parent.args.indexOf(item);
             // law-ref
             if (idx !== -1) return [NAT, BigInt(idx)];
         }
         if (named[item]) {
-            if (args) {
+            if (parent) {
                 const got = named[item];
                 // if (got[0] === APP && got[1][0] === NAT) {
                 return law_const(named[item]);
@@ -144,7 +162,7 @@ const parse = (item: Sexp, args: null | string[]): Val => {
     }
 
     if (item[0] === 'let' && item.length === 3 && Array.isArray(item[1])) {
-        if (!args) throw new Error(`can't have a let outside of a law`);
+        if (!parent) throw new Error(`can't have a let outside of a law`);
         let bindings = item[1].slice();
         let body = item[2];
         const next = (): Val => {
@@ -152,7 +170,7 @@ const parse = (item: Sexp, args: null | string[]): Val => {
                 if (bindings.length === 1) {
                     throw new Error(`dangling entry in let binding list`);
                 }
-                return parse(body, args);
+                return parse(body, parent);
             }
             const name = bindings.shift()!;
             const value = bindings.shift()!;
@@ -165,7 +183,7 @@ const parse = (item: Sexp, args: null | string[]): Val => {
             //     );
             // }
             // args.push(name);
-            return APPS(1, parse(value, args), next());
+            return APPS(1, parse(value, parent), next());
         };
 
         // const pairs = []
@@ -183,14 +201,18 @@ const parse = (item: Sexp, args: null | string[]): Val => {
             }
         });
         let ln = item[1].length;
-        if (!args) {
-            const body = parse(item[2], innerArgs);
-            return [LAW, 0n, BigInt(ln), body];
+        if (!parent) {
+            const body = parse(item[2], {
+                args: innerArgs,
+                name: 'anon',
+                lcount: 0,
+            });
+            return [LAW, asciiToNat('anon'), BigInt(ln), body];
         }
         let needed: string[] = [];
         free(item[2], innerArgs, needed);
         needed = needed.filter(
-            (n) => args.includes(n) && !named[n] && !OPS[n as 'LAW'],
+            (n) => parent.args.includes(n) && !named[n] && !OPS[n as 'LAW'],
         );
         // console.log('needed', needed); //, item[2]);
 
@@ -199,36 +221,50 @@ const parse = (item: Sexp, args: null | string[]): Val => {
             ln += needed.length;
         }
 
-        const body = parse(item[2], innerArgs);
+        parent.lcount += 1;
+        const name = parent.name + parent.lcount;
+        const body = parse(item[2], {
+            args: innerArgs,
+            name,
+            lcount: 0,
+        });
         // TODO: scoping, need to wrap if used.
-        const law: Val = [LAW, 0n, BigInt(ln), body];
+        const law: Val = [LAW, asciiToNat(name), BigInt(ln), body];
         if (needed.length) {
             return lapps(
-                args != null,
+                parent != null,
                 law,
-                ...needed.map((n): Val => [NAT, BigInt(args.indexOf(n))]),
+                ...needed.map(
+                    (n): Val => [NAT, BigInt(parent.args.indexOf(n))],
+                ),
             );
         }
         return law;
     }
 
-    const first = parse(item[0], args);
+    const first = parse(item[0], parent);
     return lapps(
-        args != null,
+        parent != null,
         first,
-        ...item.slice(1).map((item) => parse(item, args)),
+        ...item.slice(1).map((item) => parse(item, parent)),
     );
 };
+
+// We use the new hotness
+setRequireOpPin(true);
 
 const [_, __, fname, ...args] = process.argv;
 const tops = readTop(readFileSync(fname, 'utf8'));
 // console.log(tops);
 tops.forEach(parseTop);
-// console.log('nice', showNice(Force(named.main)));
+
+console.log(showNice(Force(named.main)));
+
 // Object.entries(named).forEach(([name, v]) => {
 //     console.log(name, v);
 // });
 
+trackPerf();
 if (args.length) {
     console.log(
         showNice(
@@ -238,3 +274,27 @@ if (args.length) {
 } else {
     console.log(showNice(Force(named.main)));
 }
+showPerf(reportPerf()!);
+
+// const all: Record<string, number>[] = [];
+// const allNames: string[] = [];
+// for (let i = 0; i < 15; i++) {
+//     trackPerf();
+//     Force(APPS(named.main, ...args.map((a): Val => [NAT, BigInt(i)])));
+//     const line = perfMap(reportPerf()!);
+//     all.push(line);
+//     Object.keys(line).forEach((name) => {
+//         if (!allNames.includes(name)) {
+//             allNames.push(name);
+//         }
+//     });
+// }
+// allNames.sort();
+// writeFileSync(
+//     './perf.csv',
+//     allNames.join(',') +
+//         '\n' +
+//         all
+//             .map((row) => allNames.map((name) => row[name] ?? 0).join(','))
+//             .join('\n'),
+// );

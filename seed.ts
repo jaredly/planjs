@@ -16,7 +16,7 @@ import {
     showVal,
     trackPerf,
     Val,
-} from './runtime';
+} from './runtime/runtime';
 import { showNice } from './pst';
 
 export const expToVal = (exp: Exp): Val => {

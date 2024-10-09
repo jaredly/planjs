@@ -385,14 +385,15 @@ const E = (o: Val): IVal => {
             return E(env[idx]);
         }
         case PIN:
-        case LAW:
             return o as IVal;
-        // if (o[2] !== 0n) return o;
-        // const b = o[3];
-        // const env: Val[] = [[NAT, 0n]];
-        // const res = R(env, b);
-        // env[0] = res;
-        // return E(res);
+        case LAW:
+            // return o as IVal;
+            if (o.v[2] !== 0n) return o as IVal;
+            const b = o.v[3];
+            const env: Val[] = [{ v: [NAT, 0n] }];
+            const res = R(env, b);
+            env[0] = res;
+            return E(res);
         case APP:
             o.v[1] = E(o.v[1]);
             if (A(o.v[1] as IVal) === 1) {

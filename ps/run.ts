@@ -15,7 +15,7 @@ import {
     reportPerf,
     showPerf,
     perfMap,
-} from '../runtime';
+} from '../runtime/runtime';
 import { parse as parseNice, showNice } from '../pst';
 
 export type Sexp = string | Sexp[];

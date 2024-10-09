@@ -10,7 +10,7 @@ import {
     PIN,
     show,
     Val,
-} from './runtime';
+} from './runtime/runtime';
 
 let LOG = false;
 

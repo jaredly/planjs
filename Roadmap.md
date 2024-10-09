@@ -1,4 +1,46 @@
 
+# Thinking about ... a diff kind of interpreter
+
+with like a stack or something.
+
+ok so like.
+we define all these pins.
+but like
+/lift/ them. So then the AST `pin` just has an index to the pin.
+
+so the PIN op would actually ... hash the contents and ~add it
+to the list, giving you an index into the pin list. in ~general, pinning wouldn't be super common rite.
+
+anyway
+
+The toplevel would be like:
+- here's a pin, and some arguments.
+
+what needs to mutate, really.
+E(app)
+
+And when do we E?
+- if we need the arity of a Pin or an App
+- if we're coercing to a Nat (the NAT or INC ops)
+- if we're eXecuting a Pin
+  - if we're E'ing an App of a Pin
+- if we're Forcing a value (only happens at the toplevel)
+
+
+So, if we E a fully qualified App
+
+and where did the App come from?
+
+- law-dsl (0 f x)
+- PCASE or NCASE
+
+can I like ... unroll this?
+
+hmmmm what if, I made `Arity` do some more work for me?
+
+
+
+
 # Perf analysis
 
 ok there's gotta be something screwy happening here, because:
@@ -48,8 +90,8 @@ OK SO
 
 When I get back to this, I want:
 
-- [ ] figure out if zipWith can be linear instead of apparently geometric?
-- [ ] track # calls to each LAW
+- [x] figure out if zipWith can be linear instead of apparently geometric?
+- [x] track # calls to each LAW
 - [ ] to maybe translate my little VM into wasm, because boy wouldn't that be fun
   - it's possible I wouldn't be able to figure out the memory management of it, or something.
 - [ ] thiink about a different way to do a VM? like have a managed stack or something? idk.

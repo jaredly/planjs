@@ -11,7 +11,7 @@ import {
     REQUIRE_OP_PIN,
     showVal,
     Val,
-} from './runtime';
+} from './runtime/runtime';
 import equal from 'fast-deep-equal';
 
 export type AST =

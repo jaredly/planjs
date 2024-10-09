@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { readTop } from './readTop';
-import { asciiToNat, APPS, Force, setRequireOpPin } from '../runtime/runtime';
+import { APPS, Force, setRequireOpPin } from '../runtime/runtime';
+import { asciiToNat } from '../runtime/natToAscii';
 import { APP, OPS, LAW, NAT, Val, PIN } from '../runtime/types';
 import { parse as parseNice, showNice } from '../pst';
 import { perfMap, reportPerf, showPerf, trackPerf } from '../runtime/perf';

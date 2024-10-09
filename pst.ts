@@ -1,5 +1,6 @@
 // A pseudo ast, for fun
-import { natToAscii, REQUIRE_OP_PIN, showVal } from './runtime/runtime';
+import { REQUIRE_OP_PIN, showVal } from './runtime/runtime';
+import { natToAscii } from './runtime/natToAscii';
 import { APP, LAW, NAT, OPCODE, OPNAMES, OPS, PIN, Val } from './runtime/types';
 import equal from 'fast-deep-equal';
 

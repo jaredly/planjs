@@ -1,9 +1,11 @@
-
-; ncase and pcase have the last argument first, for ergonomics
+; It's a lisp
+;
 
 (defn pcase [x p l a n] (PCASE p l a n x))
 (defn ncase [x z p] (NCASE z p x))
 (def inc INC)
+
+(defn ! [v _] v)
 
 (defn + [a b]
     (ncase a b (fn [a] (inc (+ a b)))))
@@ -33,14 +35,26 @@
             (lcase lst lst
                 (fn [a rest] (drop n rest))))))
 
-(def fib (0 (1 (zipWith + fib (drop 1 fib)))))
+(defn fib [_] (0 (1 (zipWith + (fib 0) (drop 1 (fib 0))))))
+
+(defn inf [_] (0 (1 (inf 4))))
 
 (defn take [n lst]
-    (ncase n nil (fn [n]
+    (ncase n nil (fn [n_]
         (lcase lst
             nil
-            (fn [head tail] (head (take n tail)))))))
+            (fn [head tail] (head (take n_ tail)))))))
 
-(defn fibs [n] (take n fib))
+(defn fibs [n] (take n (fib 0)))
 
-(def main fibs)
+; (defn main [_] (take 10 (1 (2 (3 (4 nil))))))
+; (defn main [_] (drop 2 (1 (2 (3 (4 nil))))))
+; (defn main [_] (zipWith + (1 (2 (3 nil))) (5 (6 (7 0)))))
+; (defn main [_] (+ 2 3))
+; (defn main [_] (take 4 (inf 0)))
+; (defn main [_] (ncase 0 nil (! 99)))
+; (defn main [_] (lcase (98 (99 (100 0))) 23 (fn [head tail] head)) )
+
+(def iii (0 (1 iii)))
+
+(defn main [_] (fibs 10))

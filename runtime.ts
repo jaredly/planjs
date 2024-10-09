@@ -38,7 +38,7 @@ export { show as showVal };
 
 export const asciiToNat = (name: string) => {
     let nat = 0n;
-    for (let i = 0; i < name.length; i++) {
+    for (let i = name.length - 1; i >= 0; i--) {
         nat <<= 8n;
         nat |= BigInt(name.charCodeAt(i));
     }
@@ -64,17 +64,29 @@ export const natToAscii = (nat: bigint) => {
     return res;
 };
 
-export const show = (v: Val, trace: Val[] = []): string => {
-    if (trace.includes(v)) {
-        const at = trace.indexOf(v);
-        return `<recurse ^${trace.length - at}>`;
+type Ctx = {
+    hidePinLaw: boolean;
+    trace: Val[];
+};
+
+export const show = (
+    v: Val,
+    ctx: Ctx = { hidePinLaw: false, trace: [] },
+): string => {
+    if (ctx.trace.includes(v)) {
+        const at = ctx.trace.indexOf(v);
+        return `<recurse ^${ctx.trace.length - at}>`;
     }
-    trace = [...trace, v];
-    const c = colors[trace.length % colors.length];
+    ctx = { ...ctx, trace: [...ctx.trace, v] };
+    // ctx = [...ctx, v];
+    const c = colors[ctx.trace.length % colors.length];
 
     switch (v[0]) {
         case PIN:
-            return c(`<${show(v[1], trace)}>`);
+            if (ctx.hidePinLaw && v[1][0] === LAW) {
+                return c(`<law>`);
+            }
+            return c(`<${show(v[1], ctx)}>`);
         case LAW: {
             // const args = [];
             // for (let i = 0; i < v[2]; i++) {
@@ -86,21 +98,20 @@ export const show = (v: Val, trace: Val[] = []): string => {
             //         trace,
             //     )}}`,
             // );
-            return c(
-                `{${natToAscii(v[1]) || '_'} ${v[2]} ${show(v[3], trace)}}`,
-            );
+            return c(`{${natToAscii(v[1]) || '_'} ${v[2]} ${show(v[3], ctx)}}`);
         }
         case APP:
+            // return c(`(${show(v[1], ctx)} ${show(v[2], ctx)})`);
             return c(
                 `(${appArgs(v)
-                    .map((m) => show(m, trace))
+                    .map((m) => show(m, ctx))
                     .join(' ')})`,
             );
         case NAT:
             return `${v[1]}`;
         case REF:
             return `[${v[1]
-                .map((m, i) => `${ansis.red(i + '')}=${show(m, trace)}`)
+                .map((m, i) => `${ansis.red(i + '')}=${show(m, ctx)}`)
                 .join(', ')}][${v[2]}]`;
     }
 };
@@ -125,7 +136,7 @@ const opArity: Record<OPCODE, number> = {
     [OPS.PCASE]: 5,
 };
 
-export const REQUIRE_OP_PIN = false;
+export const REQUIRE_OP_PIN = true;
 
 export let LOG = false;
 
@@ -251,6 +262,9 @@ const E = (o: Val): IVal => {
             return E(env[Number(o[2])]);
         }
         case PIN:
+            // if (o[1][0] === LAW) {
+            //     return o[1];
+            // }
             return o;
         case LAW:
             if (o[2] !== 0n) return o;

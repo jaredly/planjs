@@ -8,6 +8,8 @@ import {
     OPNAMES,
     OPS,
     PIN,
+    REQUIRE_OP_PIN,
+    showVal,
     Val,
 } from './runtime';
 import equal from 'fast-deep-equal';
@@ -47,6 +49,8 @@ const show = (v: AST, pins: Pins): string => {
             for (let i = 0; i < v.args; i++) {
                 args.push(`$${i + 1}`);
             }
+            if (!args.length && v.name)
+                return `(def ${v.name} ${show(v.body, pins)})`;
             return `(${v.name ? 'defn ' + v.name + ' ' : 'fn '}[${args.join(
                 ' ',
             )}] ${show(v.body, pins)})`;
@@ -85,6 +89,7 @@ const parseBody = (val: Val, trace: Val[], pins: Pins): AST => {
                 if (f2[1] === 0n) {
                     const arg = parseBody(arg1, trace, pins);
                     if (
+                        !REQUIRE_OP_PIN &&
                         arg2[0] === APP &&
                         arg2[1][0] === NAT &&
                         arg2[1][1] === 2n &&
@@ -106,13 +111,13 @@ const parseBody = (val: Val, trace: Val[], pins: Pins): AST => {
                         arg,
                     };
                 }
-                // if (f2[1] === 1n) {
-                //     return {
-                //         type: 'let',
-                //         value: parseBody(arg2, trace, pins),
-                //         body: parseBody(arg1, trace, pins),
-                //     };
-                // }
+                if (f2[1] === 1n) {
+                    return {
+                        type: 'let',
+                        value: parseBody(arg2, trace, pins),
+                        body: parseBody(arg1, trace, pins),
+                    };
+                }
             }
         }
         if (f1[0] === NAT && f1[1] === 2n) {
@@ -136,6 +141,9 @@ export const parse = (val: Val, trace: Val[], pins: Pins): AST => {
     trace = [...trace, val];
     switch (val[0]) {
         case PIN:
+            if (val[1][0] === NAT && val[1][1] <= 4n) {
+                return { type: 'primop', op: Number(val[1][1]) as 4 };
+            }
             const got = pins.findIndex((p) => equal(p.val, val[1]));
             if (got !== -1) {
                 return { type: 'pin', ref: got };
@@ -152,7 +160,7 @@ export const parse = (val: Val, trace: Val[], pins: Pins): AST => {
                 body: parseBody(val[3], trace, pins),
             };
         case APP:
-            if (val[1][0] === NAT && val[1][1] <= 4n) {
+            if (val[1][0] === NAT && val[1][1] <= 4n && !REQUIRE_OP_PIN) {
                 return {
                     type: 'app',
                     target: { type: 'primop', op: Number(val[1][1]) as 4 },
@@ -171,11 +179,21 @@ export const parse = (val: Val, trace: Val[], pins: Pins): AST => {
     }
 };
 
-export const showNice = (val: Val) => {
+export const showNice = (val: Val, debug = false) => {
     const pins: Pins = [];
     const main = parse(val, [], pins);
     return (
-        pins.map((p, i) => `PIN ${i}: ${show(p.ast, pins)}`).join('\n') +
-        `\n${show(main, pins)}`
+        pins
+            .map(
+                (p, i) =>
+                    `PIN ${i}: ${show(p.ast, pins)}` +
+                    (debug
+                        ? `\n${showVal(p.val, {
+                              hidePinLaw: true,
+                              trace: [],
+                          })}`
+                        : ''),
+            )
+            .join('\n') + `\n${show(main, pins)}`
     );
 };

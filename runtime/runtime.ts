@@ -3,96 +3,20 @@
 //
 
 import ansis from 'ansis';
-
-// Constants up here
-type tPIN = 0;
-type tLAW = 1;
-type tAPP = 2;
-type tNAT = 3;
-type tREF = 4;
-type nat = bigint;
-// immadiate (not lazy)
-type IVal = {
-    v: [tPIN, Val] | [tLAW, nat, nat, Val] | [tAPP, Val, Val] | [tNAT, nat];
-};
-export type Val = { v: IVal['v'] | [tREF, Val[], bigint] };
-
-export const PIN: tPIN = 0;
-export const LAW: tLAW = 1;
-export const APP: tAPP = 2;
-export const NAT: tNAT = 3;
-const REF: tREF = 4;
-
-export const OPS = {
-    LAW: 0,
-    PCASE: 1,
-    NCASE: 2,
-    INC: 3,
-    PIN: 4,
-} as const;
-
-export const OPNAMES: Record<number, string> = {};
-Object.entries(OPS).forEach(([name, val]) => (OPNAMES[val] = name));
-
-export type OPCODE = (typeof OPS)[keyof typeof OPS];
-const opArity: Record<OPCODE, number> = {
-    [OPS.PIN]: 1,
-    [OPS.LAW]: 3,
-    [OPS.INC]: 1,
-    [OPS.NCASE]: 3,
-    [OPS.PCASE]: 5,
-};
-
-type Perf = {
-    ops: Record<OPCODE, number>;
-    laws: Record<string, number>;
-    start: number;
-    end: number;
-};
-export let perf: null | Perf = null;
-
-export const trackPerf = () => {
-    perf = {
-        laws: {},
-        ops: {
-            [OPS.PIN]: 0,
-            [OPS.LAW]: 0,
-            [OPS.INC]: 0,
-            [OPS.NCASE]: 0,
-            [OPS.PCASE]: 0,
-        },
-        start: Date.now(),
-        end: 0,
-    };
-};
-export const reportPerf = (): Perf | null => {
-    if (!perf) return null;
-    const got = { ...perf, end: Date.now() };
-    perf = null;
-    return got;
-};
-export const perfMap = (perf: Perf) => {
-    const map: Record<string, number> = { ...perf.laws };
-    Object.entries(perf.ops).forEach(([code, count]) => {
-        map[OPNAMES[+code]] = count;
-    });
-    return map;
-};
-export const showPerf = (perf: Perf) => {
-    console.log(
-        ansis.green(`Time: ${((perf.end - perf.start) / 1000).toFixed(2)}s`),
-    );
-    console.log(ansis.blue('primops'));
-    Object.entries(perf.ops).forEach(([code, count]) => {
-        console.log(` - ${OPNAMES[+code]} : ${count}`);
-    });
-    console.log(ansis.blue('laws'));
-    Object.keys(perf.laws)
-        .sort()
-        .forEach((name) => {
-            console.log(` - ${name || '<anon>'} : ${perf.laws[name]}`);
-        });
-};
+import {
+    OPCODE,
+    OPS,
+    OPNAMES,
+    Val,
+    PIN,
+    LAW,
+    APP,
+    NAT,
+    REF,
+    IVal,
+    opArity,
+} from './types';
+import { perf } from './perf';
 
 /*
 

@@ -1,17 +1,6 @@
 // A pseudo ast, for fun
-import {
-    APP,
-    LAW,
-    NAT,
-    natToAscii,
-    OPCODE,
-    OPNAMES,
-    OPS,
-    PIN,
-    REQUIRE_OP_PIN,
-    showVal,
-    Val,
-} from './runtime/runtime';
+import { natToAscii, REQUIRE_OP_PIN, showVal } from './runtime/runtime';
+import { APP, LAW, NAT, OPCODE, OPNAMES, OPS, PIN, Val } from './runtime/types';
 import equal from 'fast-deep-equal';
 
 export type AST =

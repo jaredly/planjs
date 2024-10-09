@@ -5,19 +5,10 @@ type Exp =
     | { tag: 'Bigy'; sz: bigint; buf: bigint[] }
     | { tag: 'Cell'; f: Exp; x: Exp };
 
-import {
-    APP,
-    APPS,
-    Force,
-    NAT,
-    reportPerf,
-    setRequireOpPin,
-    showPerf,
-    showVal,
-    trackPerf,
-    Val,
-} from './runtime/runtime';
+import { APPS, Force, setRequireOpPin } from './runtime/runtime';
+import { APP, NAT, Val } from './runtime/types';
 import { showNice } from './pst';
+import { reportPerf, showPerf, trackPerf } from './runtime/perf';
 
 export const expToVal = (exp: Exp): Val => {
     switch (exp.tag) {

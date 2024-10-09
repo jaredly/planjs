@@ -86,7 +86,7 @@ E(v@Law)         = v
 E(v@App(fn, arg))  =
   v.fn = E(fn)
   if A(fn) == 1
-    v <- X(v, v) // in-place update!
+    v <- X(head(v.fn), v) // in-place update!
     E(v)
   else
     v

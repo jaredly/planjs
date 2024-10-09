@@ -1,22 +1,9 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { readTop } from './readTop';
-import {
-    APP,
-    OPS,
-    asciiToNat,
-    LAW,
-    NAT,
-    Val,
-    PIN,
-    APPS,
-    Force,
-    setRequireOpPin,
-    trackPerf,
-    reportPerf,
-    showPerf,
-    perfMap,
-} from '../runtime/runtime';
+import { asciiToNat, APPS, Force, setRequireOpPin } from '../runtime/runtime';
+import { APP, OPS, LAW, NAT, Val, PIN } from '../runtime/types';
 import { parse as parseNice, showNice } from '../pst';
+import { perfMap, reportPerf, showPerf, trackPerf } from '../runtime/perf';
 
 export type Sexp = string | Sexp[];
 

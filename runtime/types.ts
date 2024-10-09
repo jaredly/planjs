@@ -10,6 +10,7 @@ export type IVal = {
     v: [tPIN, Val] | [tLAW, nat, nat, Val] | [tAPP, Val, Val] | [tNAT, nat];
 };
 export type Val = { v: IVal['v'] | [tREF, Val[], bigint] };
+export type AppVal = { v: [tAPP, Val, Val] };
 
 export const PIN: tPIN = 0;
 export const LAW: tLAW = 1;

@@ -177,3 +177,5 @@ chk(
 // -- tag of ADT (head cast to nat)
 chk('tag of ADT', n(7), _(tag, _(7, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
 chk('tag of ADT law', n(0), _(tag, law(1, 2)));
+
+chk('nat', { v: [NAT, 5n] }, inc(4));

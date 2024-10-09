@@ -268,23 +268,29 @@ const X = (target: Val, environment: Val): Val => {
                     perf.laws[nm]++;
                 }
             }
-            // JET
-            if (
-                (name === _plus || name === _add) &&
-                arity === 2n &&
-                args.length === 3
-            ) {
-                const a = E(args[1]);
-                const b = E(args[2]);
-                return { v: [NAT, N(a) + N(b)] };
-            }
-            return R(args, b);
+            return maybeJet(name, arity, args) ?? R(args, b);
         }
         case APP: {
             return X(first(target.v[1]), environment);
         }
     }
     return target;
+};
+
+export const maybeJet = (
+    name: bigint,
+    arity: bigint,
+    args: Val[],
+): Val | void => {
+    if (
+        (name === _plus || name === _add) &&
+        arity === 2n &&
+        args.length === 3
+    ) {
+        const a = E(args[1]);
+        const b = E(args[2]);
+        return { v: [NAT, N(a) + N(b)] };
+    }
 };
 
 const _plus = asciiToNat('+');

@@ -7,6 +7,7 @@ import { asciiToNat, natToAscii } from './natToAscii';
 import { perf } from './perf';
 import {
     APP,
+    AppVal,
     IVal,
     LAW,
     NAT,
@@ -18,6 +19,7 @@ import {
     Val,
 } from './types';
 import { appArgs, show } from './show';
+import { maybeJet } from './runtime';
 
 export { Force as Force, show as showVal };
 
@@ -36,30 +38,93 @@ export let LOG = false;
  *      > if the function cannot be applied, it probably ought to error
  * Nat: if it's an opcode, then the arity of the primop. otherwise *should* be 0
  */
-const Arity = ({ v }: IVal): number => {
-    switch (v[0]) {
-        case PIN:
-            const p = v[1];
-            if (p.v[0] === NAT) {
-                return (p.v[1] <= 5 ? opArity[Number(p.v[1]) as 0] : 0) ?? 1;
+
+const runOp = (code: OPCODE, args: Val[]): Val => {
+    const f = OP_FNS[code];
+    if (!f) throw new Error(`no op fn for ${code}`);
+    if (perf != null) perf.ops[code]++;
+    return f(...(args as [Val, Val, Val, Val, Val]));
+};
+
+const maybeEval = (v: AppVal): Val | null => {
+    const args = [];
+    let n = v as IVal;
+    while (true) {
+        switch (n.v[0]) {
+            case PIN:
+                const p = n.v[1];
+                if (p.v[0] === NAT) {
+                    if (p.v[1] >= 0 && p.v[1] <= 5) {
+                        const code = Number(p.v[1]) as OPCODE;
+                        const arity = opArity[code];
+                        if (arity === args.length) {
+                            return runOp(code, args);
+                        }
+                    }
+                    return null;
+                }
+                n = Evaluate(p);
+                continue;
+            case LAW: {
+                const [_, name, arity, b] = n.v;
+                if (Number(arity) !== args.length) {
+                    return null;
+                }
+                if (perf) {
+                    const nm = natToAscii(name);
+                    if (!perf.laws[nm]) perf.laws[nm] = 1;
+                    else {
+                        perf.laws[nm]++;
+                    }
+                }
+                args.unshift(n);
+
+                return maybeJet(name, arity, args) ?? RunLaw(args, b);
             }
-            return Arity(Evaluate(v[1]));
-        case LAW:
-            return Number(v[2]);
-        case APP: {
-            // NOTE: is this good here?
-            const head = Arity(Evaluate(v[1]));
-            return head === 0 ? 0 : head - 1;
-        }
-        case NAT: {
-            if (REQUIRE_OP_PIN) {
-                return 0;
+            case APP: {
+                args.unshift(n.v[2]);
+                n = Evaluate(n.v[1]);
+                continue;
             }
-            return opArity[Number(v[1]) as 0] ?? 0;
-            // return 0; // opArity[o[1] as 0] ?? 0;
+            case NAT:
+                if (REQUIRE_OP_PIN) {
+                    return null;
+                }
+                if (n.v[1] < 0 || n.v[1] > 5) return null;
+                const code = Number(n.v[1]) as OPCODE;
+                const arity = opArity[code];
+                if (arity === args.length) {
+                    return runOp(code, args);
+                }
+                return null;
         }
     }
 };
+
+// const Arity = ({ v }: IVal): null | Val[] => {
+//     switch (v[0]) {
+//         case PIN:
+//             const p = v[1];
+//             if (p.v[0] === NAT) {
+//                 return (p.v[1] <= 5 ? opArity[Number(p.v[1]) as 0] : 0) ?? 1;
+//             }
+//             return Arity(Evaluate(v[1]));
+//         case LAW:
+//             return Number(v[2]);
+//         case APP: {
+//             // NOTE: is this good here?
+//             const head = Arity(Evaluate(v[1]));
+//             return head === 0 ? 0 : head - 1;
+//         }
+//         case NAT: {
+//             if (REQUIRE_OP_PIN) {
+//                 return 0;
+//             }
+//             return opArity[Number(v[1]) as 0] ?? 0;
+//             // return 0; // opArity[o[1] as 0] ?? 0;
+//         }
+//     }
+// };
 
 // asNat
 const Nat = (o: Val): bigint => {
@@ -155,20 +220,26 @@ const Evaluate = (o: Val): IVal => {
         case PIN:
             return o as IVal;
         case LAW:
-            // return o as IVal;
-            if (o.v[2] !== 0n) return o as IVal;
-            const b = o.v[3];
-            const env: Val[] = [{ v: [NAT, 0n] }];
-            const res = RunLaw(env, b);
-            env[0] = res;
-            return Evaluate(res);
-        case APP:
-            o.v[1] = Evaluate(o.v[1]);
-            if (Arity(o.v[1] as IVal) === 1) {
-                o.v = Execute(o, o).v;
-                return Evaluate(o);
-            }
             return o as IVal;
+        // if (o.v[2] !== 0n) return o as IVal;
+        // const b = o.v[3];
+        // const env: Val[] = [{ v: [NAT, 0n] }];
+        // const res = RunLaw(env, b);
+        // env[0] = res;
+        // return Evaluate(res);
+        case APP: {
+            o.v[1] = Evaluate(o.v[1]);
+            const res = maybeEval(o as AppVal);
+            if (res == null) return o as AppVal;
+            o.v = res.v;
+            // if (!ready) return o as IVal
+            // o.v = Execute(ready[0], ready[1]).v
+            // if (Arity(o.v[1] as IVal) === 1) {
+            //     o.v = Execute(o, appArgs(o)).v;
+            //     return Evaluate(o);
+            // }
+            return Evaluate(o);
+        }
         case NAT:
             return o as IVal;
     }
@@ -220,72 +291,72 @@ const first = (val: Val): Val => {
 };
 
 // eXecute(?)
-const Execute = (target: Val, environment: Val): Val => {
-    if (LOG)
-        console.log(
-            `X`,
-            show(target),
-            appArgs(environment).map((m) => show(m)),
-        );
-    switch (target.v[0]) {
-        case PIN:
-            const inner = target.v[1];
-            if (inner.v[0] === NAT) {
-                const code = Number(inner.v[1]) as OPCODE;
-                const f = OP_FNS[code];
-                if (!f) return target;
-                const args = appArgs(environment).slice(1);
-                if (args.length !== f.length) {
-                    return target;
-                }
-                if (perf != null) perf.ops[code]++;
-                return f(...(args as [Val, Val, Val, Val, Val]));
-            }
-            return Execute(Evaluate(target.v[1]), environment);
-        case NAT: {
-            if (REQUIRE_OP_PIN) {
-                return target;
-            }
-            const code = Number(target.v[1]) as OPCODE;
-            const f = OP_FNS[code];
-            if (!f) {
-                return target;
-            }
-            const args = appArgs(environment).slice(1);
-            if (args.length !== f.length) {
-                return target;
-            }
-            if (perf != null) perf.ops[code]++;
-            return f(...(args as [Val, Val, Val, Val, Val]));
-        }
-        case LAW: {
-            const [_, name, arity, b] = target.v;
-            const args = appArgs(environment);
-            if (perf) {
-                const nm = natToAscii(name);
-                if (!perf.laws[nm]) perf.laws[nm] = 1;
-                else {
-                    perf.laws[nm]++;
-                }
-            }
-            // JET
-            if (
-                (name === _plus || name === _add) &&
-                arity === 2n &&
-                args.length === 3
-            ) {
-                const a = Evaluate(args[1]);
-                const b = Evaluate(args[2]);
-                return { v: [NAT, Nat(a) + Nat(b)] };
-            }
-            return RunLaw(args, b);
-        }
-        case APP: {
-            return Execute(first(target.v[1]), environment);
-        }
-    }
-    return target;
-};
+// const Execute = (target: Val, environment: Val[]): Val => {
+//     if (LOG)
+//         console.log(
+//             `X`,
+//             show(target),
+//             environment.map((m) => show(m)),
+//         );
+//     switch (target.v[0]) {
+//         case PIN:
+//             const inner = target.v[1];
+//             if (inner.v[0] === NAT) {
+//                 const code = Number(inner.v[1]) as OPCODE;
+//                 const f = OP_FNS[code];
+//                 if (!f) return target;
+//                 const args = environment.slice(1);
+//                 if (args.length !== f.length) {
+//                     return target;
+//                 }
+//                 if (perf != null) perf.ops[code]++;
+//                 return f(...(args as [Val, Val, Val, Val, Val]));
+//             }
+//             return Execute(Evaluate(target.v[1]), environment);
+//         case NAT: {
+//             if (REQUIRE_OP_PIN) {
+//                 return target;
+//             }
+//             const code = Number(target.v[1]) as OPCODE;
+//             const f = OP_FNS[code];
+//             if (!f) {
+//                 return target;
+//             }
+//             const args = environment.slice(1);
+//             if (args.length !== f.length) {
+//                 return target;
+//             }
+//             if (perf != null) perf.ops[code]++;
+//             return f(...(args as [Val, Val, Val, Val, Val]));
+//         }
+//         case LAW: {
+//             const [_, name, arity, b] = target.v;
+//             const args = environment;
+//             if (perf) {
+//                 const nm = natToAscii(name);
+//                 if (!perf.laws[nm]) perf.laws[nm] = 1;
+//                 else {
+//                     perf.laws[nm]++;
+//                 }
+//             }
+//             // JET
+//             if (
+//                 (name === _plus || name === _add) &&
+//                 arity === 2n &&
+//                 args.length === 3
+//             ) {
+//                 const a = Evaluate(args[1]);
+//                 const b = Evaluate(args[2]);
+//                 return { v: [NAT, Nat(a) + Nat(b)] };
+//             }
+//             return RunLaw(args, b);
+//         }
+//         case APP: {
+//             return Execute(first(target.v[1]), environment);
+//         }
+//     }
+//     return target;
+// };
 
 const _plus = asciiToNat('+');
 const _add = asciiToNat('_Add');

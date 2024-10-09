@@ -9,6 +9,13 @@ recursive .. references ... are they working right?
 should $0 reference the law, or the return value of the law?
 I guess the law, so you can actually call recursive functions.
 
+aha ok so its working.
+
+
+- [ ] jet addition for crying out loud
+  - it .. didn't help too much? idk.
+- [ ] let's get lets getting.
+
 
 
 #

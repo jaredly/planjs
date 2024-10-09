@@ -367,7 +367,12 @@ const X = (target: Val, environment: Val[]): Val => {
             return f(...(args as [Val, Val, Val, Val, Val]));
         }
         case LAW: {
-            const [_, __, a, b] = target;
+            const [_, name, arity, b] = target;
+            if (name === _plus && arity === 2n && environment.length === 3) {
+                // const a = E(environment[1]);
+                // const b = E(environment[2]);
+                // return [NAT, N(a) + N(b)];
+            }
             return R(environment, b);
         }
         case APP: {
@@ -376,3 +381,5 @@ const X = (target: Val, environment: Val[]): Val => {
     }
     return target;
 };
+
+const _plus = asciiToNat('+');

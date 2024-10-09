@@ -41,6 +41,12 @@ export const parseTop = (top: Sexp) => {
                 throw new Error(`arg must be string`);
             }
         });
+        let needed: string[] = [];
+        free(top[3], args, needed);
+        needed = needed.filter((n) => !named[n] && !OPS[n as 'LAW']);
+        // if (needed.length) {
+        //     throw new Error(`undefined variables in toplevel: ${needed}`);
+        // }
         const body = parse(top[3], args);
         named[top[1]] = [
             PIN,
@@ -74,6 +80,14 @@ export const free = (v: Sexp, scope: string[], vbls: string[]) => {
         });
         free(v[2], scope, vbls);
         return;
+    }
+    if (v[0] === 'let' && v.length === 3 && Array.isArray(v[1])) {
+        for (let i = 0; i < v[1].length; i += 2) {
+            const name = v[1][i];
+            if (typeof name === 'string') {
+                scope.push(name);
+            }
+        }
     }
     v.forEach((v) => free(v, scope, vbls));
 };
@@ -129,6 +143,36 @@ const parse = (item: Sexp, args: null | string[]): Val => {
         throw new Error(`undefined ref ${item}`);
     }
 
+    if (item[0] === 'let' && item.length === 3 && Array.isArray(item[1])) {
+        if (!args) throw new Error(`can't have a let outside of a law`);
+        let bindings = item[1].slice();
+        let body = item[2];
+        const next = (): Val => {
+            if (bindings.length < 2) {
+                if (bindings.length === 1) {
+                    throw new Error(`dangling entry in let binding list`);
+                }
+                return parse(body, args);
+            }
+            const name = bindings.shift()!;
+            const value = bindings.shift()!;
+            if (typeof name !== 'string') {
+                throw new Error(`let binding must be a string`);
+            }
+            // if (args.includes(name)) {
+            //     throw new Error(
+            //         `variable shadowing not allowed: ${name} is already bound`,
+            //     );
+            // }
+            // args.push(name);
+            return APPS(1, parse(value, args), next());
+        };
+
+        // const pairs = []
+        // return APPS(1, parse(item[1], args), parse(item[2], args));
+        return next();
+    }
+
     if (item[0] === 'fn' && Array.isArray(item[1])) {
         const innerArgs: string[] = ['-self-'];
         item[1].forEach((item) => {
@@ -145,7 +189,9 @@ const parse = (item: Sexp, args: null | string[]): Val => {
         }
         let needed: string[] = [];
         free(item[2], innerArgs, needed);
-        needed = needed.filter((n) => args.includes(n) && !named[n]);
+        needed = needed.filter(
+            (n) => args.includes(n) && !named[n] && !OPS[n as 'LAW'],
+        );
         // console.log('needed', needed); //, item[2]);
 
         if (needed.length) {
@@ -187,7 +233,7 @@ if (args.length) {
     console.log(
         showNice(
             Force(APPS(named.main, ...args.map((a): Val => [NAT, BigInt(+a)]))),
-            true,
+            // true,
         ),
     );
 }

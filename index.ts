@@ -12,7 +12,7 @@ const chk = (msg: string, x: Val, y: Val) => {
         console.log(`✅ ${msg}`);
         return;
     }
-    console.log(`🚨 ${show(x)} != ${show(y)}`, msg);
+    console.log(`🚨 expected ${show(x)}, received ${show(y)}`, msg);
 };
 
 const mapp =
@@ -73,19 +73,19 @@ chk(
     appHead(law(99, 1, llet(lapp(1 /*arg*/, 2 /*self*/), 2), 100)),
 );
 
-chk('pinlaw', { v: [LAW, 1n, 2n, n(0)] }, pin(law(), 1, 2, 0));
-chk('pinlaw2', { v: [LAW, 1n, 2n, n(0)] }, pin(law(1), 2, 0));
+chk('pinlaw', { v: [LAW, 0n, 2n, n(0)] }, pin(law(), 0, 2, 0));
+chk('pinlaw2', { v: [LAW, 0n, 2n, n(0)] }, pin(law(0), 2, 0));
 chk(
     'pinlaw3',
-    { v: [PIN, { v: [LAW, 1n, 2n, n(0)] }] },
-    pin(law(1, 2, 0), 3, 4),
+    { v: [PIN, { v: [LAW, 0n, 2n, n(0)] }] },
+    pin(law(0, 2, 0), 3, 4),
 );
 // HMMM is this supposed to collapse?
 // chk('pinlaw4', {v:[PIN, {v:[LAW, 1, 2, n(0)]}]}, pin(pin(law(1, 2, 0)), 3, 4));
 chk(
     'pinlaw4',
-    { v: [PIN, { v: [PIN, { v: [LAW, 1n, 2n, n(0)] }] }] },
-    pin(pin(law(1, 2, 0)), 3, 4),
+    { v: [PIN, { v: [PIN, { v: [LAW, 0n, 2n, n(0)] }] }] },
+    pin(pin(law(0, 2, 0)), 3, 4),
 );
 
 chk('arg 1', n(9), law(0, 1, 1, 9));

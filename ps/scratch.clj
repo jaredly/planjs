@@ -16,5 +16,14 @@
 ; (defn main [_] (fibs 10))
 
 ;(defn main [_] (take 20 (let ($1 $2) $2)))
+;(defn pcase [x p l a n] (PCASE p l a n x))
+(defn ncase [x z p] (NCASE z p x))
+(defn inc [x] (INC x))
+;(defn ! [v _] v)
 
-(defn inf [_] (0 (1 (2 $0))))
+(defn + [a b]
+    (ncase a b (fn [a] (inc (+ a b)))))
+
+
+;; (defn inf [_] (0 (1 (2 $0))))
+(defn main [_] (+ 2 12))

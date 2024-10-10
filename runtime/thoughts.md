@@ -8,6 +8,14 @@ nat (numbre)
 
 Sooo it'll be different per tag, which is fine.
 
+pin needs 1 + 8
+law needs 1 + 8 + 1 + 4
+app needs 1 + 1 + 1
+nat needs 1 + 8
+
+// down to 14 bytes from 40, yes it's a far cry
+
+
 
 
 

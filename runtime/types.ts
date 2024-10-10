@@ -1,4 +1,4 @@
-import { Val } from './types';
+// import { Val } from './types';
 
 // Constants up here
 type tPIN = 0;
@@ -8,11 +8,20 @@ type tNAT = 3;
 type tREF = 4;
 type nat = bigint;
 // immadiate (not lazy)
-export type IVal = {
-    v: [tPIN, Val] | [tLAW, nat, nat, Val] | [tAPP, Val, Val] | [tNAT, nat];
-};
+export type IVal = PinVal | LawVal | AppVal | NatVal;
 export type Val = { v: IVal['v'] | [tREF, Val[], bigint] };
 export type AppVal = { v: [tAPP, Val, Val] };
+export type LawVal = { v: [tLAW, nat, nat, Val] };
+export type PinVal = { v: [tPIN, Val] };
+export type NatVal = { v: [tNAT, nat] };
+
+export type IPinVal<T> =
+    | { v: [tPIN, T] }
+    | { v: [tLAW, nat, nat, IPinVal<T>] }
+    | {
+          v: [tAPP, IPinVal<T>, IPinVal<T>];
+      }
+    | NatVal;
 
 export const PIN: tPIN = 0;
 export const LAW: tLAW = 1;

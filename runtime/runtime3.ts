@@ -1,275 +1,177 @@
 import equal from 'fast-deep-equal';
-import {
-    APP,
-    AppVal,
-    IPinVal,
-    LAW,
-    LawVal,
-    NAT,
-    NatVal,
-    PIN,
-    PinVal,
-    REF,
-    Val,
-} from './types';
 import { showNice } from '../pst';
-import { natToAscii } from './natToAscii';
-import objectHash from 'object-hash';
-import ansis from 'ansis';
-
-type Memory = {
-    buffer: ArrayBuffer;
-    view: DataView;
-    idx: number;
-};
+import {
+    mAPP,
+    Memory,
+    mENV,
+    mLAW,
+    mNAT,
+    mPIN,
+    mREF,
+    show,
+    vexport,
+    vimport,
+} from './arraybuffer';
+import { APP, LAW, NAT, opArity, OPCODE, PIN, REF, Val } from './types';
+import { RT } from './runtime2';
 
 export const setRequireOpPin = (val: boolean) => {
     if (!val) throw new Error('not supporte');
 };
 
-type NVal = IPinVal<number>;
+type p = number; // pointer
 
-const init = (): Memory => {
-    const buffer = new ArrayBuffer(1024);
-    return { buffer, view: new DataView(buffer), idx: 0 };
-};
+let m: Memory = null!;
 
-const grow = (mem: Memory) => {
-    const oldv = new Uint8Array(mem.buffer);
-    mem.buffer = new ArrayBuffer(mem.buffer.byteLength * 2);
-    mem.view = new DataView(mem.buffer);
-    new Uint8Array(mem.buffer).set(oldv);
-};
+const tag = (o: p) => m.view.getUint8(o);
 
-const unpack = (mem: Memory, idx: number, got: Record<number, Val>): Val => {
-    if (got[idx]) return got[idx];
-    got[idx] = { v: [NAT, -1n] };
-    switch (mem.view.getUint8(idx)) {
-        case PIN:
-            got[idx].v = lPIN.get(mem, idx, got).v;
-            break;
-        case LAW:
-            got[idx].v = lLAW.get(mem, idx, got).v;
-            break;
-        case APP:
-            got[idx].v = lAPP.get(mem, idx, got).v;
-            break;
-        case NAT:
-            got[idx].v = lNAT.get(mem, idx, got).v;
-            break;
-        default:
-            throw new Error(`Unexpected tag`);
+const getEnv = (env: number, idx: number) => {
+    if (idx === 0) {
+        return mENV.head(m, env);
     }
-    return got[idx];
-};
-
-const show = (mem: Memory, idx: number) => {
-    switch (mem.view.getUint8(idx)) {
-        case PIN:
-            return lPIN.show(mem, idx);
-        case LAW:
-            return lLAW.show(mem, idx);
-        case APP:
-            return lAPP.show(mem, idx);
-        case NAT:
-            return lNAT.show(mem, idx);
-        default:
-            throw new Error(`Unexpected tag $`);
+    // if mid is empty, we have an odd length.
+    const mid = mENV.mid(m, env);
+    if (idx === 1) return mid;
+    const tail = mENV.tail(m, env);
+    if (tail === 0) {
+        throw new Error(`missing tail in env`);
     }
+    return getEnv(tail, idx - (mid === 0 ? 1 : 2));
 };
 
-type GS<V> = {
-    set(v: V, mem: Memory, i: number): void;
-    get(mem: Memory, i: number, got: Record<number, Val>): Val;
-    show(mem: Memory, i: number): string;
+const pushEnv = (env: number, item: number) => {
+    const size = mENV.size(m, env);
+    if (size % 2 == 1) {
+        mENV.setMid(m, env, item);
+        mENV.setSize(m, env, size + 1);
+        return env;
+    }
+    const loc = m.alloc();
+    mENV.write(m, loc, size + 1, item, 0, env);
+    return loc;
 };
 
-const lPIN: GS<{ v: [0, number] }> = {
-    set(v, mem, i) {
-        mem.view.setUint32(i + OFF0, v.v[1] * 14);
-    },
-    get(mem, idx, got) {
-        const at = mem.view.getUint32(idx + OFF0);
-        return { v: [PIN, unpack(mem, at, got)] };
-        // return { v: [PIN, mem.view.getUint32(idx +OFF0) / 14] };
-    },
-    show(mem, idx) {
-        return `PIN(${mem.view.getUint32(idx + OFF0)})`;
-    },
+const newEnv = () => {
+    const loc = m.alloc();
+    mENV.write(m, loc, 0, 0, 0, 0);
+    return loc;
 };
 
-const OFF0 = 1;
-const LAW1 = 9;
-const LAW2 = 10;
+const Execute = (o: p) => {
+    let env = newEnv();
 
-const lLAW: GS<{ v: [1, bigint, bigint, NVal] }> = {
-    set(val, mem, i) {
-        // if (val.v[1] >= 18446744073709551616n) {
-        //     console.warn('name too large');
-        // }
-        mem.view.setBigUint64(i + OFF0, val.v[1]);
-        mem.view.setUint8(i + LAW1, Number(val.v[2]));
-        const body = load(val.v[3], mem);
-        mem.view.setUint32(i + LAW2, body);
-    },
-    get(mem, idx, got) {
-        return {
-            v: [
-                LAW,
-                mem.view.getBigUint64(idx + OFF0),
-                BigInt(mem.view.getUint8(idx + LAW1)),
-                unpack(mem, mem.view.getUint32(idx + LAW2), got),
-            ],
-        };
-    },
-    show(mem, idx) {
-        return `LAW(${natToAscii(
-            mem.view.getBigUint64(idx + OFF0),
-        )} ${mem.view.getUint8(idx + LAW1)} ${mem.view.getUint32(idx + LAW2)})`;
-    },
-};
-
-const APP1 = 5;
-
-const lAPP: GS<{ v: [2, NVal, NVal] }> = {
-    set(val, mem, i) {
-        const f = load(val.v[1], mem);
-        mem.view.setUint32(i + OFF0, f);
-        const g = load(val.v[2], mem);
-        mem.view.setUint32(i + APP1, g);
-    },
-    get(mem, idx, got) {
-        return {
-            v: [
-                APP,
-                unpack(mem, mem.view.getUint32(idx + OFF0), got),
-                unpack(mem, mem.view.getUint32(idx + APP1), got),
-            ],
-        };
-    },
-    show(mem, idx) {
-        return `APP(${mem.view.getUint32(idx + OFF0)} ${mem.view.getUint32(
-            idx + APP1,
-        )})`;
-    },
-};
-
-const lNAT: GS<NatVal> = {
-    set(val, mem, i) {
-        if (val.v[1] >= Math.pow(2, 64)) {
-            throw new Error(`not packing big nats yet`);
+    let self = false;
+    let n = o;
+    while (true) {
+        switch (tag(o)) {
+            case PIN:
+                const p = mPIN.get(m, o);
+                if (tag(p) === NAT) {
+                    const code = Number(mNAT.get(m, p)) as OPCODE;
+                    const arity = opArity[code];
+                    if (arity === mENV.size(m, env)) {
+                        // runOp will try to put
+                        // the result in [o] if [o]
+                        // is writable. otherwise it will allocate
+                        return runOp(code, env, o);
+                    }
+                    return null;
+                }
+                const n0 = n;
+                const en = Evaluate(p);
+                n = en ?? n;
+                if (tag(n) === LAW) {
+                    self = true;
+                    pushEnv(env, n0);
+                }
+                continue;
+            case LAW: {
+                const { name, arity, body } = mLAW.read(m, o);
+                if (arity != mENV.size(m, env) - (self ? 1 : 0)) {
+                    return null;
+                }
+                if (!self) env = pushEnv(env, n);
+                return jet(name, arity, env, o) ?? RunLaw(env, body, o);
+            }
+            case APP: {
+                env = pushEnv(env, mAPP.x(m, n));
+                const f = mAPP.f(m, n);
+                n = Evaluate(f) ?? f;
+                continue;
+            }
+            case NAT: {
+                return null;
+            }
         }
-        mem.view.setBigUint64(i + OFF0, val.v[1]);
-    },
-    get(mem, idx, got) {
-        return {
-            v: [NAT, mem.view.getBigUint64(idx + OFF0)],
-        };
-    },
-    show(mem, idx) {
-        return `NAT(${mem.view.getBigUint64(idx + OFF0)})`;
-    },
-};
-
-const loadAt = (val: NVal, mem: Memory, i: number) => {
-    mem.view.setUint8(i, val.v[0]);
-    switch (val.v[0]) {
-        case PIN:
-            lPIN.set(val as any, mem, i);
-            break;
-        case LAW:
-            lLAW.set(val as any, mem, i);
-            break;
-        case APP:
-            lAPP.set(val as any, mem, i);
-            break;
-        case NAT:
-            lNAT.set(val as NatVal, mem, i);
-            break;
     }
 };
 
-const load = (val: NVal, mem: Memory): number => {
-    if (mem.idx + 14 >= mem.buffer.byteLength) {
-        grow(mem);
-    }
-    const i = mem.idx;
-    mem.idx += 14;
-    loadAt(val, mem, i);
-    return i;
-};
-
-const mapPins = <A, B>(v: IPinVal<A>, f: (a: A) => B): IPinVal<B> => {
-    switch (v.v[0]) {
-        case PIN:
-            return { v: [PIN, f(v.v[1])] };
-        case LAW:
-            return { v: [LAW, v.v[1], v.v[2], mapPins(v.v[3], f)] };
-        case APP:
-            return { v: [APP, mapPins(v.v[1], f), mapPins(v.v[2], f)] };
-        case NAT:
-            return { v: [NAT, v.v[1]] };
-    }
-};
-
-const backPins = (v: NVal, pins: [NVal, Val][]): Val => {
-    return mapPins(v, (v) => {
-        return backPins(pins[v][0], pins);
-    });
-};
-
-const findPins = (v: Val, pins: [NVal, Val][]): NVal => {
-    return mapPins(v as IPinVal<Val>, (v) => {
-        const idx = pins.findIndex((f) => equal(f[1], v));
-        if (idx === -1) {
-            const at = pins.length;
-            pins.push([{ v: [NAT, 0n] }, v]);
-            pins[at][0] = findPins(v, pins);
-            return at;
+const Evaluate = (o: p): p | null => {
+    switch (tag(o)) {
+        case REF: {
+            const env = mREF.env(m, o);
+            const idx = mREF.idx(m, o);
+            const esize = mENV.size(m, env);
+            if (idx >= esize) {
+                const move = o < m.stack;
+                if (move) {
+                    o = m.alloc();
+                }
+                mNAT.write(m, o, BigInt(idx));
+                return move ? o : null;
+            }
+            return Evaluate(getEnv(env, esize - 1 - idx));
         }
-        return idx;
-    });
+        case PIN:
+        case LAW:
+        case NAT:
+            return null;
+        case APP: {
+            const res = Execute(o);
+            if (res == null) return null;
+            return Evaluate(res);
+        }
+        default:
+            throw new Error(`unknown tag! ${tag(o)}`);
+    }
 };
 
-export const vimport = (v: Val) => {
-    const mem = init();
-    const pins: [NVal, Val][] = [];
-    const changed = findPins(v, pins);
-
-    mem.idx = pins.length * 14;
-    pins.forEach(([pin, _], i) => {
-        loadAt(pin, mem, i * 14);
-    });
-
-    const at = load(changed, mem);
-    return { mem, at };
+const F = (o: p): p | null => {
+    let eo = Evaluate(o);
+    if (eo != null) {
+        o = eo;
+    }
+    if (tag(o) === APP) {
+        const { f, x } = mAPP.read(m, o);
+        const v1 = F(f);
+        const v2 = F(x);
+        if (v1 != null || v2 != null) {
+            if (eo == null && o < m.stack) {
+                eo = m.alloc();
+                o = eo;
+                mAPP.write(m, o, v1 ?? f, v2 ?? x);
+            } else {
+                if (v1 != null) {
+                    mAPP.setF(m, 0, v1);
+                }
+                if (v2 != null) {
+                    mAPP.setX(m, 0, v2);
+                }
+            }
+        }
+    }
+    return eo != null ? eo : null;
 };
 
-export const vexport = (mem: Memory, at: number) => {
-    return unpack(mem, at, {});
-};
-
-export const roundTrip = (v: Val): Val => {
+export const run = (v: Val) => {
     const { mem, at } = vimport(v);
-    return vexport(mem, at);
-};
 
-export const Force = (v: Val) => {
-    const mem = init();
-    const pins: [NVal, Val][] = [];
-    const changed = findPins(v, pins);
-
-    mem.idx = pins.length * 14;
-    pins.forEach(([pin, _], i) => {
-        loadAt(pin, mem, i * 14);
-    });
-
-    const at = load(changed, mem);
+    m = mem;
 
     // OK so
     // now to like, load stuff?
 
-    const full = unpack(mem, at, {});
+    const full = vexport(mem, at);
     if (!equal(v, full)) {
         console.log('first:');
         console.log(showNice(v));
@@ -283,4 +185,9 @@ export const Force = (v: Val) => {
         console.log('loaded and its all good');
     }
     return v;
+};
+
+export const runtime3: RT = {
+    setRequireOpPin,
+    run,
 };

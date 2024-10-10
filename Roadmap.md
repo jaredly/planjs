@@ -1,4 +1,114 @@
 
+
+```
+pin(?)
+law(n,a,?)
+app(?,?)
+nat(v)
+let(?, ?)
+partial(?,?)
+
+app(x, y)
+-> what's in X can't see what's in Y, it can only see Y directly.
+-> right? and what's in Y can't see anything about X.
+
+let(v, b)
+-> what's in V /can/ see further 'let' things in B
+-> and B can obviously reference V, that's the whole point.
+-> V can also self-reference.
+
+law(_, _, b) -> b can access the arguments (stack) given to it, and nothing else. there is no way to /reach into/ a law from the stack.
+
+```
+
+
+
+
+
+I'm still not sure I understand the execution semantics of PLAN wrt laziness and the environment stack.
+
+specifically, the fact that a let's value can reference a let in its body.
+
+so, simple example
+
+(let [x (1 y)] (let [y (2 x)] x))
+-> (1 (2 (1 (2 ...))))
+
+if you have:
+
+(let [x (1 y)]
+  ((let [y (2 x)] x)
+   (let [y (3 x)] x)))
+
+would that result in two independent evaluations of `x`, for each given y?
+
+(
+  (1 (2 (1 ...)))
+  (1 (3 (1 ...)))
+)
+
+
+
+
+# Ok so we're actualy goign to compile to wasm, no vm
+and JITing (the `law` primop) will jump out to javascript, produce a new wasm instance, and allow you to FFI between instances essentially.
+Could get a little cumbersome, idk.
+hmmmmm and ...
+
+
+
+- [ ] make my lisp have `let` and `let*`
+  then ensure that laziness is doing the right thing.
+  - right now it gives every LET a unique index, which
+    isn't actually correct; the LETs need to follow scoping
+    rules.
+
+
+OK SO
+I can think of two things to be doing
+
+(1) a wasm-vm, where the data is living in a block,
+  and we run our little vm, like I have in runtime3.
+  would be an interesting project.
+  I'd actually want to be writing a custom language,
+  which then I'd translate to javascript (for testing)
+  and later wasm.
+
+(2) just compile plan to wasm. this would mean potentially
+  a decent amount of hassle when calling LAW because we'd
+  need to JIT something.
+  also PIN would need to (a) hash the contents, then (b)
+  lookup in our pin table somehow to see if we have that
+  already, and if we do it can be a normal call_indirect
+  sort of thing, otherwise
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# doing a js wasmy thing
+
+- [ ] validate that Execute can take the "location to put stuff"
+  instead of doing that on the backend.
+  - hmmm there's more I can do to make runtime2 feel more
+    like halfway there.
+    like, have a "memory" that is a list of items...
+    idk if thats worth it tho
+
 # So, a way to do it in wasm
 
 have ... a reference

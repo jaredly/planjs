@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { readTop } from './readTop';
-import { Force, setRequireOpPin } from '../runtime/runtime3';
+import { runtime2 } from '../runtime/runtime2';
+import { runtime3 } from '../runtime/runtime3';
 // import {roundTrip} from '../runtime/runtime3';
 import { APPS } from '../runtime/types';
 import { asciiToNat } from '../runtime/natToAscii';
@@ -248,10 +249,34 @@ const parse = (
     );
 };
 
-// We use the new hotness
-setRequireOpPin(true);
+const usage = `run.ts [opts] fname ...args
+opts:
+- --runtime=2|3
+`;
 
-const [_, __, fname, ...args] = process.argv;
+let [_, __, ...args] = process.argv;
+
+const opts: Record<string, string | boolean> = {};
+args = args.filter((arg) => {
+    if (arg.startsWith('--')) {
+        const [name, value] = arg.slice(2).split('=');
+        opts[name] = value ?? true;
+        return false;
+    }
+    return true;
+});
+const fname = args.shift();
+
+if (!fname) {
+    console.log(usage);
+    process.exit(1);
+}
+
+const rt = (opts['runtime'] ?? opts['r']) === '3' ? runtime3 : runtime2;
+
+// We use the new hotness
+rt.setRequireOpPin(true);
+
 const tops = readTop(readFileSync(fname, 'utf8'));
 // console.log(tops);
 tops.forEach(parseTop);
@@ -267,7 +292,7 @@ if (args.length) {
     console.log('got arghs', args.length);
     console.log(
         showNice(
-            Force(
+            rt.run(
                 APPS(
                     named.main,
                     ...args.map((a): Val => ({ v: [NAT, BigInt(+a)] })),
@@ -277,7 +302,7 @@ if (args.length) {
     );
 } else {
     console.log('here we are');
-    console.log(showNice(Force(named.main)));
+    console.log(showNice(rt.run(named.main)));
 }
 showPerf(reportPerf()!);
 
@@ -288,7 +313,7 @@ if (make_chart) {
     const allNames: string[] = [];
     for (let i = 0; i < 15; i++) {
         trackPerf();
-        Force(
+        rt.run(
             APPS(
                 named.main,
                 ...args.map((a): Val => ({ v: [NAT, BigInt(i)] })),

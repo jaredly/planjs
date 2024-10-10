@@ -54,12 +54,16 @@ N(v) = match E(v)
   _      -> 0
 
 // [R]un: ~env:Val[] ~body:Val -> Val
-// Run a law. This evaluates the "embedded DSL"
-R(env, Nat(n))                   = Ref(env, n) // lazy! note that env is mutable.
-R(env, App(App(Nat(0), f), x))   = App(R(env, f), R(env, x)) // (f x)
-R(env, App(App(Nat(1), v), b))   = L(env, v, b) // let v in b
-R(env, App(Nat(2), c))           = c // const c
-R(env, x)                        = x
+// Run a law. This evaluates th "embedded DSL"
+R(env, Nat(n))                 = Ref(env, n) // lazy! note that env is mutable.
+R(env, App(App(Nat(0), f), x)) = App(R(env, f), R(env, x)) // (f x)
+R(env, App(Nat(2), c))         = c // const c
+R(env, x)                      = x
+
+// Run a law with let. Note that all "lets" must be
+// hoisted to the topmost level of a law.
+RL(env, App(App(Nat(1), v), b))  = L(env, v, b) // let v in b
+RL(env, x)                       = R(env, x)
 
 // [L]et: ~env:Val[] ~value:Val ~body:Val -> Val
 // (let $idx = value in body)
@@ -67,7 +71,7 @@ R(env, x)                        = x
 // value in the environment list
 L(env, value, body) =
   env.push(R(env, value))
-  R(env, body)
+  RL(env, body)
 
 // [F]orce: Val -> IVal
 // recursively force evaluation

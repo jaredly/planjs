@@ -36,20 +36,9 @@ export const show = (
             }
             return c(`<${show(v[1], ctx)}>`);
         case LAW: {
-            // const args = [];
-            // for (let i = 0; i < v[2]; i++) {
-            //     args.push(`$${i + 1}`);
-            // }
-            // return c(
-            //     `fn ${natToAscii(v[1])} (${args.join(', ')}) ${show(
-            //         v[3],
-            //         trace,
-            //     )}}`,
-            // );
             return c(`{${natToAscii(v[1]) || '_'} ${v[2]} ${show(v[3], ctx)}}`);
         }
         case APP:
-            // return c(`(${show(v[1], ctx)} ${show(v[2], ctx)})`);
             return c(
                 `(${appArgs(val)
                     .map((m) => show(m, ctx))

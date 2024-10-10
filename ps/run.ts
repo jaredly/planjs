@@ -260,8 +260,9 @@ tops.forEach(parseTop);
 //     console.log(name, v);
 // });
 
-// trackPerf();
+trackPerf();
 if (args.length) {
+    console.log('got arghs', args.length);
     console.log(
         showNice(
             Force(
@@ -273,9 +274,10 @@ if (args.length) {
         ),
     );
 } else {
+    console.log('here we are');
     console.log(showNice(Force(named.main)));
 }
-// showPerf(reportPerf()!);
+showPerf(reportPerf()!);
 
 const make_chart = false;
 

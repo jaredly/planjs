@@ -7,12 +7,16 @@ let LOG = false;
 
 const chk = (msg: string, x: Val, y: Val) => {
     if (LOG) console.log(`expected`, show(x), `input`, show(y), msg);
+    const oy = show(y);
     y = Force(y);
     if (equal(x, y)) {
         console.log(`✅ ${msg}`);
         return;
     }
-    console.log(`🚨 expected ${show(x)}, received ${show(y)}`, msg);
+    console.log(
+        `🚨 expected ${show(x)}, received ${show(y)} : orig: ${oy}`,
+        msg,
+    );
 };
 
 const mapp =
@@ -80,12 +84,10 @@ chk(
     { v: [PIN, { v: [LAW, 0n, 2n, n(0)] }] },
     pin(law(0, 2, 0), 3, 4),
 );
-// HMMM is this supposed to collapse?
-// chk('pinlaw4', {v:[PIN, {v:[LAW, 1, 2, n(0)]}]}, pin(pin(law(1, 2, 0)), 3, 4));
 chk(
     'pinlaw4',
-    { v: [PIN, { v: [PIN, { v: [LAW, 0n, 2n, n(0)] }] }] },
-    pin(pin(law(0, 2, 0)), 3, 4),
+    { v: [PIN, { v: [LAW, 1n, 2n, n(0)] }] },
+    pin(pin(law(1, 2, 0)), 3, 4),
 );
 
 chk('arg 1', n(9), law(0, 1, 1, 9));

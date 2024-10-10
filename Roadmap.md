@@ -1,4 +1,18 @@
 
+# So, a way to do it in wasm
+
+have ... a reference
+and when crawling it, always clone? maybe?
+
+So the source of truth is living in on memory or something
+
+and when traversing, we copy it over? maybe. somehow.
+
+eh ok, so here's the deal
+
+let's try another like runtime3, that puts everything in an ArrayBuffer
+
+
 # Thinking about ... a diff kind of interpreter
 
 with like a stack or something.
@@ -24,7 +38,10 @@ And when do we E?
 - if we're coercing to a Nat (the NAT or INC ops)
 - if we're eXecuting a Pin
   - if we're E'ing an App of a Pin
-- if we're Forcing a value (only happens at the toplevel)
+- if we're Forcing a value
+  - toplevel
+  - RunLaw
+  - OP_PIN | OP_LAW
 
 
 So, if we E a fully qualified App

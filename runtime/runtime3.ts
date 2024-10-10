@@ -26,12 +26,7 @@ export const setRequireOpPin = (val: boolean) => {
     if (!val) throw new Error('not supporte');
 };
 
-// positions:
-// 1 & 3 are pointers
-// 2 & 4 are numbers
-// hmmmmm so, actually, I want to be able to use the whole
-// thing for numbers if nat is big, right?
-// yeah ok let's just do it normally.
+type NVal = IPinVal<number>;
 
 const init = (): Memory => {
     const buffer = new ArrayBuffer(1024);
@@ -45,21 +40,21 @@ const grow = (mem: Memory) => {
     new Uint8Array(mem.buffer).set(oldv);
 };
 
-const unpack = (mem: Memory, idx: number, got: Record<number, Val>): Val => {
+const unpack = (mem: Memory, idx: number, got: Record<number, NVal>): NVal => {
     if (got[idx]) return got[idx];
     got[idx] = { v: [NAT, -1n] };
     switch (mem.view.getUint8(idx)) {
         case PIN:
-            got[idx].v = lPIN.get(mem, idx, got).v;
+            got[idx].v = lPIN.get(mem, idx, got).v as any;
             break;
         case LAW:
-            got[idx].v = lLAW.get(mem, idx, got).v;
+            got[idx].v = lLAW.get(mem, idx, got).v as any;
             break;
         case APP:
-            got[idx].v = lAPP.get(mem, idx, got).v;
+            got[idx].v = lAPP.get(mem, idx, got).v as any;
             break;
         case NAT:
-            got[idx].v = lNAT.get(mem, idx, got).v;
+            got[idx].v = lNAT.get(mem, idx, got).v as any;
             break;
         default:
             throw new Error(`Unexpected tag`);
@@ -84,23 +79,23 @@ const show = (mem: Memory, idx: number) => {
 
 type GS<V> = {
     set(v: V, mem: Memory, i: number): void;
-    get(mem: Memory, i: number, got: Record<number, Val>): V;
+    get(mem: Memory, i: number, got: Record<number, NVal>): V;
     show(mem: Memory, i: number): string;
 };
 
-const lPIN: GS<PinVal> = {
+const lPIN: GS<{ v: [0, number] }> = {
     set(v, mem, i) {
-        mem.view.setUint32(i + 1, load(v.v[1], mem));
+        mem.view.setUint32(i + 1, v.v[1] * 14);
     },
     get(mem, idx, got) {
-        return { v: [PIN, unpack(mem, mem.view.getUint32(idx + 1), got)] };
+        return { v: [PIN, mem.view.getUint32(idx + 1) / 14] };
     },
     show(mem, idx) {
         return `PIN(${mem.view.getUint32(idx + 1)})`;
     },
 };
 
-const lLAW: GS<LawVal> = {
+const lLAW: GS<{ v: [1, bigint, bigint, NVal] }> = {
     set(val, mem, i) {
         mem.view.setBigUint64(i + 1, val.v[1]);
         mem.view.setUint8(i + 9, Number(val.v[2]));
@@ -123,7 +118,7 @@ const lLAW: GS<LawVal> = {
     },
 };
 
-const lAPP: GS<AppVal> = {
+const lAPP: GS<{ v: [2, NVal, NVal] }> = {
     set(val, mem, i) {
         mem.view.setUint32(i + 1, load(val.v[1], mem));
         mem.view.setUint32(i + 5, load(val.v[2], mem));
@@ -161,30 +156,31 @@ const lNAT: GS<NatVal> = {
     },
 };
 
-const load = (val: Val, mem: Memory): number => {
+const loadAt = (val: NVal, mem: Memory, i: number) => {
+    mem.view.setUint8(i, val.v[0]);
+    switch (val.v[0]) {
+        case PIN:
+            lPIN.set(val as any, mem, i);
+            break;
+        case LAW:
+            lLAW.set(val as any, mem, i);
+            break;
+        case APP:
+            lAPP.set(val as any, mem, i);
+            break;
+        case NAT:
+            lNAT.set(val as NatVal, mem, i);
+            break;
+    }
+};
+
+const load = (val: NVal, mem: Memory): number => {
     if (mem.idx + 14 >= mem.buffer.byteLength) {
         grow(mem);
     }
     const i = mem.idx;
     mem.idx += 14;
-    mem.view.setUint8(i, val.v[0]);
-    switch (val.v[0]) {
-        case PIN:
-            lPIN.set(val as PinVal, mem, i);
-            break;
-        case LAW:
-            lLAW.set(val as LawVal, mem, i);
-            break;
-        case APP:
-            lAPP.set(val as AppVal, mem, i);
-            break;
-        case NAT:
-            lNAT.set(val as NatVal, mem, i);
-            break;
-        case REF:
-            throw new Error(`REFs shouldn't be in a starting value`);
-    }
-    console.log(`loaded`, showNice(val), i);
+    loadAt(val, mem, i);
     return i;
 };
 
@@ -201,45 +197,46 @@ const mapPins = <A, B>(v: IPinVal<A>, f: (a: A) => B): IPinVal<B> => {
     }
 };
 
-const traverse = (v: Val, f: (v: Val) => void) => {
-    f(v);
-    switch (v.v[0]) {
-        case PIN:
-            traverse(v.v[1], f);
-            break;
-        case LAW:
-            traverse(v.v[3], f);
-            break;
-        case APP:
-            traverse(v.v[1], f);
-            traverse(v.v[2], f);
-            break;
-    }
+const backPins = (v: NVal, pins: [NVal, Val][]): Val => {
+    return mapPins(v, (v) => {
+        return backPins(pins[v][0], pins);
+    });
 };
 
-const findPins = (v: Val) => {
-    const pins: Record<string, Val> = {};
-    traverse(v, (v) => {
-        if (v.v[0] === PIN) {
-            const h = objectHash(v.v[1]);
-            if (!pins[h]) {
-                pins[h] = v.v[1];
-            }
+const findPins = (v: Val, pins: [NVal, Val][]): NVal => {
+    return mapPins(v as IPinVal<Val>, (v) => {
+        const idx = pins.findIndex((f) => equal(f[1], v));
+        if (idx === -1) {
+            const at = pins.length;
+            pins.push([{ v: [NAT, 0n] }, v]);
+            pins[at][0] = findPins(v, pins);
+            return at;
         }
+        return idx;
     });
-    return pins;
 };
 
 export const Force = (v: Val) => {
     const mem = init();
-    const pins = findPins(v);
-    const at = load(v, mem);
+    const pins: [NVal, Val][] = [];
+    const changed = findPins(v, pins);
+
+    mem.idx = pins.length * 14;
+    pins.forEach(([pin, _], i) => {
+        loadAt(pin, mem, i * 14);
+    });
+
+    const at = load(changed, mem);
+
+    // OK so
+    // now to like, load stuff?
+
     const full = unpack(mem, at, {});
-    if (!equal(v, full)) {
+    if (!equal(changed, full)) {
         console.log('first:');
         console.log(showNice(v));
         console.log('second:');
-        console.log(showNice(full));
+        console.log(showNice(backPins(full, pins)));
         for (let i = 0; i <= mem.idx; i += 14) {
             console.log(i, show(mem, i));
         }

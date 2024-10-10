@@ -5,6 +5,7 @@ import { maybeJet } from './runtime';
 import { show } from './show';
 import {
     APP,
+    APPS,
     AppVal,
     IVal,
     LAW,
@@ -139,18 +140,6 @@ const RunLaw = (env: Val[], body: Val): Val => {
     }
 
     return body;
-};
-
-export type Input = Val | number;
-export const asVal = (v: Input): Val =>
-    typeof v === 'number' ? { v: [NAT, BigInt(v)] } : v;
-
-export const APPS = (target: Input, ...args: Input[]): Val => {
-    target = asVal(target);
-    while (args.length) {
-        target = { v: [APP, target, asVal(args.shift()!)] };
-    }
-    return target;
 };
 
 // force (unlazy recursively)

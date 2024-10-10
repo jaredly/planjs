@@ -1,5 +1,6 @@
 import equal from 'fast-deep-equal';
-import { APPS, asVal, Force, Input } from './runtime/runtime2';
+import { Force } from './runtime/runtime2';
+import { APPS, asVal, Input } from './runtime/types';
 import { LAW, NAT, OPS, PIN, Val } from './runtime/types';
 import { show } from './runtime/show';
 

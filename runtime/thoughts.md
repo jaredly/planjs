@@ -5,6 +5,15 @@ law (name [debug]) (arity number) (pointer body)
 app (pointer) (pointer)
 nat (numbre)
 
+
+Sooo it'll be different per tag, which is fine.
+
+
+
+
+
+
+
 are pointers and numbers interchangeable?
 is it ~faster to allocate a little more,
 and have the pointers always be in the same places?

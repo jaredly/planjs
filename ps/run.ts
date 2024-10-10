@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { readTop } from './readTop';
 import { Force, setRequireOpPin } from '../runtime/runtime3';
+// import {roundTrip} from '../runtime/runtime3';
 import { APPS } from '../runtime/types';
 import { asciiToNat } from '../runtime/natToAscii';
 import { APP, OPS, LAW, NAT, Val, PIN } from '../runtime/types';

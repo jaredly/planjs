@@ -13,6 +13,9 @@ eh ok, so here's the deal
 let's try another like runtime3, that puts everything in an ArrayBuffer
 
 
+ohhhh wow its a garbage collection bug lol.
+i'm setting the value on the old buffer. what a classic memory error.
+
 # Thinking about ... a diff kind of interpreter
 
 with like a stack or something.

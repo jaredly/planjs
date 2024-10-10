@@ -1,10 +1,8 @@
-// based on `plank`
-// https://github.com/operating-function/pallas/blob/master/plank/plan.c
-//
-
 import ansis from 'ansis';
-import { asciiToNat, natToAscii } from './natToAscii';
+import { natToAscii } from './natToAscii';
 import { perf } from './perf';
+import { maybeJet } from './runtime';
+import { show } from './show';
 import {
     APP,
     AppVal,
@@ -18,8 +16,6 @@ import {
     REF,
     Val,
 } from './types';
-import { show } from './show';
-import { maybeJet } from './runtime';
 
 export { Force as Force, show as showVal };
 

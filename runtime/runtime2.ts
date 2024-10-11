@@ -28,6 +28,9 @@ export const setRequireOpPin = (yes: boolean) => {
 export let LOG = false;
 
 const Execute = (v: AppVal): Val | null => {
+    if (perf) {
+        perf.execs++;
+    }
     const args: Val[] = [];
     let n = v as IVal;
     let self = false;

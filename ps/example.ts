@@ -9,22 +9,128 @@ N number | bigint
 import { natToAscii } from '../runtime/natToAscii';
 
 type Law = Function & { nameNat: bigint; body: Value };
-type Value =
-    | number
-    | bigint
-    | Array<Value>
-    | Law
-    | { hash: string; contents: Value };
+// string is a pin
+type Immediate = Law | number | bigint | string;
+type Lazy = { lazy: Immediate | [Value, Value]; forced: boolean };
+type Value = Immediate | Lazy;
+
+const PINS: Record<string, Value> = {};
+
+// const
+
+// const Execute = (v: Value, arg: Value) => {
+//     const args: Value[] = [arg];
+//     let n = v
+//     while (true) {
+//         if (typeof n === 'string') {
+//             const inner = PINS[n]
+//             if (inner == null) throw new Error(`unknown pin ${n}`)
+//             if (typeof inner === 'number') {
+//             }
+//         }
+//     }
+// }
+
+/*
+
+(len f = 3)
+
+(((((f a) b) c) d) e)
+Evalute N=5
+Execute N=5
+arg[]
+arg[e]
+-Evaluate N=4
+-Execute N=4
+-arg[]
+-arg[d]
+--EV 3
+--EX 3
+--arg[]
+--arg[c]
+---EV 2
+---EX 2
+---arg[]
+---arg[b]
+----EV 1
+----EX 1
+----arg[]
+----arg[a]
+-----EV f
+----<f
+---<null
+---arg[a b]
+
+yeah this feels like a ton of wasted work.
+
+IF (len f) > 5  : we do nothing
+IF (len f) < 5  : we update the lazy
+IF (len f) === 5: we update the innermost lazy
+right???
+
+*/
+
+const resolve = (v: Value, args: Value[]): Value | [Value, Value[]] => {
+    if (typeof v === 'function') {
+        if (v.length === args.length) {
+            return v.apply(v, args);
+        }
+        if (v.length < args.length) {
+            const inner = v.apply(v, args.slice(0, v.length));
+            return resolve(inner, args.slice(v.length));
+        }
+        return [v, args];
+    }
+    if (typeof v === 'object' && !v.forced && Array.isArray(v.lazy)) {
+    }
+    // if (typeof v === 'object')
+};
+
+const force = (v: Value) => {
+    if (typeof v !== 'object' || v.forced || !Array.isArray(v.lazy)) {
+        return;
+    }
+    v.forced = true;
+
+    const [head, tail] = v.lazy;
+
+    force(head);
+
+    const inner = typeof head === 'object';
+    // let all = v.lazy.flat(100000);
+    // while (
+    //     typeof all[0] === 'function' &&
+    //     all[0].length <= all.length - 1
+    // ) {
+    //     const target = all.shift()! as Law;
+    //     const result: Value = target.apply(
+    //         target,
+    //         all.slice(0, target.length),
+    //     );
+    //     all = all.slice(target.length);
+    //     if (!all.length) {
+    //         v.lazy = force(result);
+    //         while (typeof v.lazy === 'object' && 'lazy' in v.lazy) {
+    //             v.lazy = v.lazy.lazy;
+    //         }
+    //         return;
+    //     }
+    //     all.unshift(result);
+    //     v.lazy = all;
+    // }
+};
 
 const INC = (v: Value) => {
-    if (typeof v === 'number') {
-        if (v < Number.MAX_SAFE_INTEGER - 1) {
-            return v + 1;
+    force(v);
+    const inner = typeof v === 'object' ? v.lazy : v;
+    if (typeof inner === 'number') {
+        if (inner < Number.MAX_SAFE_INTEGER - 1) {
+            return inner + 1;
         }
-        return BigInt(v) + 1n;
+        return BigInt(inner) + 1n;
     }
-    if (typeof v === 'bigint') {
-        return v + 1n;
+    if (typeof inner === 'bigint') {
+        return inner + 1n;
     }
     return 1;
 };
@@ -47,6 +153,7 @@ const LAW = (name: bigint, arity: number, body: Value): Value => {
 };
 
 const NCASE = (zero: Value, plus: Value, x: Value) => {
+    x = force(x);
     if (
         x === 0 ||
         x === 0n ||
@@ -55,13 +162,9 @@ const NCASE = (zero: Value, plus: Value, x: Value) => {
         return zero;
     }
     if (typeof x === 'number') {
-        return typeof plus === 'function' && plus.length === 1
-            ? plus(x - 1)
-            : [plus, x - 1];
+        return [plus, x - 1];
     } else {
-        return typeof plus === 'function' && plus.length === 1
-            ? plus(x - 1n)
-            : [plus, x - 1n];
+        return [plus, x - 1n];
     }
 };
 

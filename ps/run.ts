@@ -308,7 +308,7 @@ if (args.length) {
 }
 showPerf(reportPerf()!);
 
-const make_chart = false;
+const make_chart = opts['chart'];
 
 if (make_chart) {
     const all: Record<string, number>[] = [];
@@ -338,4 +338,5 @@ if (make_chart) {
                 .map((row) => allNames.map((name) => row[name] ?? 0).join(','))
                 .join('\n'),
     );
+    console.log('wrote to perf.csv');
 }

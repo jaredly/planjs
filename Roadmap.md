@@ -3,20 +3,15 @@
 let's compile to javascript.
 
 
+So I started doing stuff like this:
 ```js
-const INC = (v: number | bigint) => {
-  if (typeof v === number )  {
-    if (v < Number.MAX_SAFE_INTEGER - 1) {
-      return v + 1
-    }
-    return BigInt(v) + 1n
-  }
-  return v + 1n
-}
-
-const $plus1 = (a, b, c) => INC(a(b, c))
-
+  return typeof plus === 'function' && plus.length === 1
+      ? plus(x - 1)
+      : [plus, x - 1];
 ```
+but actually I think that's not right, like it's too eager?
+like we need a `force` function. that would do the calling,
+if needed.
 
 
 

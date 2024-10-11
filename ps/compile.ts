@@ -88,7 +88,7 @@ export const compile = (name: string, arity: number, body: Value) => {
     const lets: Value[] = [];
     const inner = extractLets(body, lets);
     const maxIndex = arity + lets.length;
-    return `asLaw(function ${name} (${args.join(', ')}) {${lets
+    const fn = `function ${name} (${args.join(', ')}) {${lets
         .map((_, i) => `\n    const $${i + arity + 1} = [0, -1, -1];`)
         .join('')}${lets
         .map(
@@ -100,7 +100,12 @@ export const compile = (name: string, arity: number, body: Value) => {
         )
         .join('')}
     return ${compileBody(inner, maxIndex)};
-}, ${asciiToNat(name)}n, ${JSON.stringify(body, (_, v) =>
+}`;
+    const SIMPLE = true;
+    if (SIMPLE) {
+        return fn;
+    }
+    return `asLaw(${fn}, ${asciiToNat(name)}n, ${JSON.stringify(body, (_, v) =>
         typeof v === 'bigint' ? v + 'n' : v,
     )})`;
 };

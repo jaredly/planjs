@@ -102,26 +102,15 @@ const setLazy = (v: Lazy, n: Value) => {
         console.log(v, n);
         throw new Error(`cant re-force an already forced`);
     }
-    // console.log('setting yes', v);
     v[0] = 1;
-    // if (Array.isArray(n)) {
-    //     v[1] = n[1];
-    //     if (n.length === 3) {
-    //         v[2] = n[2];
-    //     } else {
-    //         v.pop();
-    //     }
-    // } else {
     v[1] = n;
     if (v.length === 3) {
         v.pop();
     }
-    // }
 };
 
 const forceApp = (v: Value) => {
     if (typeof v !== 'object' || v[0]) return;
-    // console.log('forcing', show(v));
     v[0] = 1;
     const trail: { v: Lazy; arg: Value }[] = [{ v, arg: v[2] }];
     let f: Value | Function = v[1];
@@ -131,17 +120,10 @@ const forceApp = (v: Value) => {
             // LAW
             case 'function': {
                 if (f.length > trail.length) {
-                    // console.log(
-                    //     'function wasnts more',
-                    //     f.length,
-                    //     trail.length,
-                    //     f,
-                    // );
                     return; // nothing to see here
                 }
                 const dest = trail[f.length - 1];
                 const args = trail.splice(0, f.length).map((a) => a.arg);
-                // console.log('valling', f, 'with', args);
                 const result = f.apply(self ?? f, args);
                 if (!trail.length) {
                     v[0] = 0;
@@ -159,6 +141,7 @@ const forceApp = (v: Value) => {
                     throw new Error(`unknowwn pin ${f}`);
                 }
                 // PIN(LAW) wants the self to be the pin, not the law
+                // BUT if I'm doing this all in Bun with a `new Function` it gets mad
                 // if (typeof pin === 'function') {
                 //     // lol ok so calling `this` with a string does weird things???
                 //     // ONLY if the function was created in an Eval. Like a cross-domain thing?

@@ -27,6 +27,7 @@ The {lazy} stuff is clutter. let's do:
 
 
 AHH my new jit doesn't JET
+now it does and itt is great.
 
 
 

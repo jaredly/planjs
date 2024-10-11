@@ -1,4 +1,129 @@
 
+# OK so something muuch simpler ought to be:
+let's compile to javascript.
+
+
+```js
+const INC = (v: number | bigint) => {
+  if (typeof v === number )  {
+    if (v < Number.MAX_SAFE_INTEGER - 1) {
+      return v + 1
+    }
+    return BigInt(v) + 1n
+  }
+  return v + 1n
+}
+
+const $plus1 = (a, b, c) => INC(a(b, c))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+# Let's consider the simple case of or non-jetted plus:
+
+```clj
+(defn +1 [$1 $2 $3] (INC ($1 $3 $2)))
+(defn + [$1 $2] (NCASE $2 (+1 $0 $2) $1))
+```
+
+ok but.
+
+
+```clj
+(func $INC (param $p i32)
+  (i32.load (local.get $p))
+  (i32.eq (i32.const 3))
+  (if
+    (then
+      (local $res i32)
+      (call $alloc)
+      (local.tee $res)
+      (i32.const 3)
+      i32.store
+      (i32.load (i32.add (local.get $p) (i32.const 1)))
+      (i32.store (i32.add (local.get $res) (i32.const 1)))
+      (local.get $res)
+    )
+    (else (i32.const 0))
+  )
+)
+
+(func $plus1 (param $p1 i32) (param $p2 i32) (param $p3 i32) (return i32)
+  (call $INC (call_indirect (local.get $p1) (local.get $p2) (local.get $p3)))
+)
+
+(func $plus (param $p1 i32) (param $p2 i32)
+
+)
+```
+
+hmmmmm
+so,
+if we're doing this thing
+where we...
+hm ok
+so
+we gotta box some numbers here. like.
+deal with it.
+
+Hmmmmmmmmm
+ORRRrrrrrr
+like we could put it all right there
+on the stack of the law.
+hm.
+aha
+ok so turns out multi-value return is a thing,
+so I can just like return a whole NAT from INC. yay?
+
+hrm I feel like... this whole story would benefit from some
+type information.
+
+should I write a type inference algorithm for PLAN?
+why of course I should.
+
+ONNN the other hand,
+what if I translate PLAN to javascript?
+that'd be fun, right?
+
+
+
+
+
+## OK Hoisted Lets change a lot of things.
+
+This means:
+- we statically know the size of the stack
+- we can validate REFs when parsing a law
+- we can statically know which lets are cyclical,
+  which is ... cool?
+
+OK so a law is a function. either a call_indirect
+to a function in the local table, or an FFI to
+a JITted function.
+
+ON THE OTHER HAND if we just statically have
+a fully applied function, we can compile it as
+a direct `call`. Which is sweet.
+
+Soooo what we need is:
+- the ability to convert a `LAW` into wasm.
+
+QUESTION: what needs to be lazy?
+only let-bound things? NO also env-bound (fn args)
+
+which again means "a thing on a stack somewhere", right?
+
+##
+
 
 ```
 pin(?)
@@ -29,24 +154,43 @@ I'm still not sure I understand the execution semantics of PLAN wrt laziness and
 
 specifically, the fact that a let's value can reference a let in its body.
 
-so, simple example
+so, simple example (assuming we're inside a LAW body)
 
-(let [x (1 y)] (let [y (2 x)] x))
--> (1 (2 (1 (2 ...))))
+(let [$1 (5 $2)] (let [$2 (6 $1)] $1))
+-> (5 (6 (5 (6 ...))))
 
-if you have:
+the PLAN for this is
 
-(let [x (1 y)]
-  ((let [y (2 x)] x)
-   (let [y (3 x)] x)))
+(1 ((2 5) 2) (1 ((2 6) 1) 1))
 
-would that result in two independent evaluations of `x`, for each given y?
+It gets weird when you can have multiple paths to fulfill the
+requested "$2"
+
+(let [$1 (5 $2)]
+  ((let [$2 (6 $1)] $1)
+   (let [$2 (7 $1)] $1)))
+
+would that result in two independent evaluations of `$1`, for each given $2?
 
 (
-  (1 (2 (1 ...)))
-  (1 (3 (1 ...)))
+  (5 (6 (5 (6 ...))))
+  (5 (7 (5 (7 ...))))
 )
 
+this would mean that the runtime would have to essentially de-opt the binding of $1, evaluating it twice instead of caching it.
+
+another thing that strikes me as strange: the dual interpretation
+of bare NATs in the law dsl; where if it's a valid index into the
+environment, it's treated as a ref, otherwise it's a constant.
+
+So what should this be:
+
+```
+(let [$1 $2]
+  ($1 (let [$2 7] $1)))
+```
+
+would that evaluate to (2 7)? Where the first time, $2 is not a valid index and so evaluates to "2" and the second time it is a valid index and so resolves to "7"?
 
 
 

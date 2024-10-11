@@ -1,0 +1,15 @@
+(defn inc [$1] (INC $1))
+(defn ncase [$1 $2 $3] (NCASE $2 $3 $1))
+(defn +1 [$1 $2 $3] (inc ($1 $3 $2)))
+(defn + [$1 $2] (ncase $1 $2 (+1 $0 $2)))
+
+(def nil 0)
+(defn ! [$1 $2] $1)
+(defn pcase [$1 $2 $3 $4 $5] (PCASE $2 $3 $4 $5 $1))
+(defn lcase [$1 $2 $3] (pcase $1 (! $2) (! $2) $3 (! $2)))
+(defn zip [$1 $2 $3] (lcase $2 nil ((defn zip1 [$1 $2 $3 $4 $5] (lcase $1 nil ((defn zip11 [$1 $2 $3 $4 $5 $6] ($1 $2 $5 ($3 $1 $4 $6))) $2 $4 $3 $5))) $3 $1 $0)))
+(defn drop [$1 $2] (ncase $1 $2 ((defn drop1 [$1 $2 $3] (lcase $1 $1 ((defn drop11 [$1 $2 $3 $4] ($1 $2 $4)) $2 $3))) $2 $0)))
+(defn take [$1 $2] (ncase $1 nil ((defn take1 [$1 $2 $3] (lcase $1 nil ((defn take11 [$1 $2 $3 $4] ($3 ($1 $2 $4))) $2 $3))) $2 $0)))
+(defn fib [$1] let ?? = (0 (1 (zip + $2 $3))) in let ?? = (drop 1 $2) in (take $1 $2))
+(defn main [$1] (fib $1))
+main

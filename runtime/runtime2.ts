@@ -68,7 +68,7 @@ const Execute = (v: AppVal): Val | null => {
                 }
                 if (!self) args.unshift(n);
 
-                return maybeJet(name, arity, args) ?? RunLaw(args, b);
+                return maybeJet(name, arity, args) ?? RunLawWithLet(args, b);
             }
             case APP: {
                 args.unshift(n.v[2]);
@@ -103,6 +103,25 @@ const Let = (env: Val[], value: Val, body: Val): Val => {
     const x = RunLaw(env, value);
     if (LOG) console.log(`LET ${ansis.red(env.length + '')} = ${show(x)}`);
     env.push(x);
+    return RunLawWithLet(env, body);
+};
+
+const RunLawWithLet = (env: Val[], body: Val): Val => {
+    if (body.v[0] === APP) {
+        const f = body.v[1];
+        const g = body.v[2];
+        if (f.v[0] === APP) {
+            const f_inner = f.v[1];
+            const g_inner = f.v[2];
+
+            // (let v in b)
+            if (f_inner.v[0] === NAT && f_inner.v[1] === 1n) {
+                const v = g_inner;
+                const b = g;
+                return Let(env, v, b);
+            }
+        }
+    }
     return RunLaw(env, body);
 };
 
@@ -112,26 +131,18 @@ const RunLaw = (env: Val[], body: Val): Val => {
         return { v: [REF, env, body.v[1]] };
     }
     if (body.v[0] === APP) {
-        const f = Force(body.v[1]);
-        const g = Force(body.v[2]);
+        const f = body.v[1];
+        const g = body.v[2];
         // APP(f,                     g)
         // APP(APP(f_inner, g_inner), g)
         if (f.v[0] === APP) {
-            const f_inner = Force(f.v[1]);
-            const g_inner = Force(f.v[2]);
-            if (f_inner.v[0] === NAT) {
-                // (f x)
-                if (f_inner.v[1] === 0n) {
-                    const f = g_inner;
-                    const x = g;
-                    return { v: [APP, RunLaw(env, f), RunLaw(env, x)] };
-                }
-                // (let v in b)
-                if (f_inner.v[1] === 1n) {
-                    const v = g_inner;
-                    const b = g;
-                    return Let(env, v, b);
-                }
+            const f_inner = f.v[1];
+            const g_inner = f.v[2];
+            // (f x)
+            if (f_inner.v[0] === NAT && f_inner.v[1] === 0n) {
+                const f = g_inner;
+                const x = g;
+                return { v: [APP, RunLaw(env, f), RunLaw(env, x)] };
             }
         }
         if (f.v[0] === NAT && f.v[1] === 2n) {

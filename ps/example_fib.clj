@@ -22,14 +22,14 @@
 
 (def nil 0)
 
-(defn zipWit [f one two]
+(defn zip [f one two]
     (lcase one
         nil
         (fn [a one]
             (lcase two
                 nil
                 (fn [b two]
-                    ((f a b) (zipWit f one two)))))))
+                    ((f a b) (zip f one two)))))))
 
 ; should do ncase*n and pcase*n
 (defn drop [n lst]
@@ -47,10 +47,9 @@
             (fn [head tail] (head (take n_ tail)))))))
 
 (defn fib [n]
-    (take n
-        (let [self   (0 (1 (zipWit + self offset)))
-              offset (drop 1 self)]
-            self)))
+    (let [self   (0 (1 (zip + self offset)))
+          offset (drop 1 self)]
+        (take n self)))
 
 ;(defn fib [_] (0 (1 (zipWith + (fib 0) (drop 1 (fib 0))))))
 ;(defn main [n] (take n (fib 0)))

@@ -281,7 +281,9 @@ const tops = readTop(readFileSync(fname, 'utf8'));
 // console.log(tops);
 tops.forEach(parseTop);
 
-// console.log(showNice(Force(named.main)));
+if (opts['show'] || opts['plan']) {
+    console.log(showNice(rt.run(named.main)));
+}
 
 // Object.entries(named).forEach(([name, v]) => {
 //     console.log(name, v);

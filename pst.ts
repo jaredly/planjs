@@ -171,7 +171,8 @@ export const parse = (v: Val, trace: Val[], pins: Pins): AST => {
     }
 };
 
-export const showNice = (val: Val, debug = false) => {
+export const showNice = (val: Val | string, debug = false) => {
+    if (typeof val === 'string') return val;
     const pins: Pins = [];
     const main = parse(val, [], pins);
     return (

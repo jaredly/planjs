@@ -10,7 +10,7 @@ export type Memory = {
     idx: number;
 };
 
-type NVal = IPinVal<number>;
+export type NVal = IPinVal<number>;
 
 export const init = (): Memory => {
     const buffer = new ArrayBuffer(1024);
@@ -381,7 +381,7 @@ const backPins = (v: NVal, pins: [NVal, Val][]): Val => {
     });
 };
 
-const findPins = (v: Val, pins: [NVal, Val][]): NVal => {
+export const findPins = (v: Val, pins: [NVal, Val][]): NVal => {
     return mapPins(v as IPinVal<Val>, (v) => {
         const idx = pins.findIndex((f) => equal(f[1], v));
         if (idx === -1) {

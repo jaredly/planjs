@@ -8,6 +8,7 @@ import { asciiToNat } from '../runtime/natToAscii';
 import { APP, OPS, LAW, NAT, Val, PIN } from '../runtime/types';
 import { parse as parseNice, showNice } from '../pst';
 import { perfMap, reportPerf, showPerf, trackPerf } from '../runtime/perf';
+import { jsjit } from './compile';
 
 export type Sexp = string | Sexp[];
 
@@ -272,7 +273,8 @@ if (!fname) {
     process.exit(1);
 }
 
-const rt = (opts['runtime'] ?? opts['r']) === '3' ? runtime3 : runtime2;
+const rtn = opts['runtime'] ?? opts['r'];
+const rt = rtn === '3' ? runtime3 : rtn === 'jit' ? jsjit : runtime2;
 
 // We use the new hotness
 rt.setRequireOpPin(true);

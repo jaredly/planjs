@@ -17,6 +17,15 @@ if needed.
 
 
 
+The {lazy} stuff is clutter. let's do:
+[1, v] -> forced, Immediate
+[1, f, x] -> forced, app
+[0, f, x] -> unforced, app
+
+
+
+
+
 
 
 

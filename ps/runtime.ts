@@ -7,13 +7,13 @@ N number | bigint
 
 import { asciiToNat, natToAscii } from '../runtime/natToAscii';
 
-type Law = Function & { nameNat: bigint; body: Value };
+export type Law = Function & { nameNat: bigint; body: Value };
 type Immediate = Law | number | bigint | string;
 type App = [Value, Value];
 type Lazy = { lazy: Immediate | App; forced: boolean };
 export type Value = Immediate | Lazy;
 
-const PINS: Record<string, Value> = {
+export const PINS: Record<string, Value> = {
     LAW: 0,
     PCASE: 1,
     NCASE: 2,
@@ -200,7 +200,7 @@ const PCASE = (p: Value, l: Value, a: Value, n: Value, x: Value) => {
     return APPS(a, x.lazy[0], x.lazy[1]);
 };
 
-const asLaw = (f: Function, name: bigint, body: Value): Law => {
+export const asLaw = (f: Function, name: bigint, body: Value): Law => {
     const l: Law = f as any;
     l.nameNat = name;
     l.body = body;

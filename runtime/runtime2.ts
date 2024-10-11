@@ -233,7 +233,10 @@ const OP_FNS = {
     [OPS.PCASE]: OP_PCASE,
 };
 
-export type RT = { setRequireOpPin(v: boolean): void; run: (v: Val) => Val };
+export type RT = {
+    setRequireOpPin(v: boolean): void;
+    run: (v: Val) => Val | string;
+};
 export const runtime2: RT = {
     setRequireOpPin,
     run: Force,

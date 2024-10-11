@@ -6,15 +6,22 @@ N number | bigint
 
 */
 
-import { natToAscii } from '../runtime/natToAscii';
+import { asciiToNat, natToAscii } from '../runtime/natToAscii';
 
 type Law = Function & { nameNat: bigint; body: Value };
 // string is a pin
 type Immediate = Law | number | bigint | string;
-type Lazy = { lazy: Immediate | [Value, Value]; forced: boolean };
+type App = [Value, Value];
+type Lazy = { lazy: Immediate | App; forced: boolean };
 type Value = Immediate | Lazy;
 
-const PINS: Record<string, Value> = {};
+const PINS: Record<string, Value> = {
+    LAW: 0,
+    PCASE: 1,
+    NCASE: 2,
+    INC: 3,
+    PIN: 4,
+};
 
 // const
 
@@ -36,6 +43,12 @@ const PINS: Record<string, Value> = {};
 (len f = 3)
 
 (((((f a) b) c) d) e)
+
+soooo like
+when I get down to `f`,
+I want to know:
+what are the lazies for each arg actually.
+
 Evalute N=5
 Execute N=5
 arg[]
@@ -70,89 +83,134 @@ right???
 
 */
 
-const resolve = (v: Value, args: Value[]): Value | [Value, Value[]] => {
-    if (typeof v === 'function') {
-        if (v.length === args.length) {
-            return v.apply(v, args);
-        }
-        if (v.length < args.length) {
-            const inner = v.apply(v, args.slice(0, v.length));
-            return resolve(inner, args.slice(v.length));
-        }
-        return [v, args];
+const show = (v: Value): string => {
+    switch (typeof v) {
+        case 'number':
+        case 'bigint':
+            return v + '';
+        case 'string':
+            return `PIN(${v})`;
+        case 'function':
+            return `LAW(${natToAscii(v.nameNat)})`;
+        case 'object':
+            if (Array.isArray(v.lazy)) {
+                return `APP(${show(v.lazy[0])} ${show(v.lazy[1])})`;
+            }
+            return show(v.lazy);
     }
-    if (typeof v === 'object' && !v.forced && Array.isArray(v.lazy)) {
-    }
-    // if (typeof v === 'object')
 };
 
-const force = (v: Value) => {
-    if (typeof v !== 'object' || v.forced || !Array.isArray(v.lazy)) {
-        return;
-    }
+const force = (v: Value): Value => {
+    if (typeof v !== 'object') return v;
+    if (!v.forced) forceApp(v);
+    return !Array.isArray(v.lazy) ? force(v.lazy) : v;
+};
+
+const forceApp = (v: Value) => {
+    if (typeof v !== 'object' || v.forced || !Array.isArray(v.lazy)) return;
+    console.log('forceing', show(v));
     v.forced = true;
-
-    const [head, tail] = v.lazy;
-
-    force(head);
-
-    const inner = typeof head === 'object';
-    // let all = v.lazy.flat(100000);
-    // while (
-    //     typeof all[0] === 'function' &&
-    //     all[0].length <= all.length - 1
-    // ) {
-    //     const target = all.shift()! as Law;
-    //     const result: Value = target.apply(
-    //         target,
-    //         all.slice(0, target.length),
-    //     );
-    //     all = all.slice(target.length);
-    //     if (!all.length) {
-    //         v.lazy = force(result);
-    //         while (typeof v.lazy === 'object' && 'lazy' in v.lazy) {
-    //             v.lazy = v.lazy.lazy;
-    //         }
-    //         return;
-    //     }
-    //     all.unshift(result);
-    //     v.lazy = all;
-    // }
+    const trail: { v: Lazy; arg: Value }[] = [{ v, arg: v.lazy[1] }];
+    let f: Value | Function = v.lazy[0];
+    let self: null | Value = null;
+    while (true) {
+        switch (typeof f) {
+            // LAW
+            case 'function': {
+                if (f.length > trail.length) return; // nothing to see here
+                const dest = trail[f.length - 1];
+                const args = trail.splice(0, f.length).map((a) => a.arg);
+                const result = f.apply(self ?? f, args);
+                dest.v.forced = true;
+                dest.v.lazy = result;
+                f = result;
+                continue;
+            }
+            // PIN
+            case 'string': {
+                let pin: Value | Function = PINS[f];
+                // PIN(LAW) wants the self to be the pin, not the law
+                if (typeof pin === 'function') {
+                    self = f;
+                }
+                if (pin === 0) pin = LAW;
+                else if (pin === 1) pin = PCASE;
+                else if (pin === 2) pin = NCASE;
+                else if (pin === 3) pin = INC;
+                else if (pin === 4) pin = PIN;
+                f = pin;
+                continue;
+            }
+            // APP or a lazy
+            case 'object': {
+                if (Array.isArray(f.lazy)) {
+                    trail.unshift({ v: f, arg: f.lazy[1] });
+                    f = f.lazy[0];
+                } else {
+                    f = f.lazy;
+                }
+                continue;
+            }
+            default:
+                // NAT
+                return;
+        }
+    }
 };
 
 const INC = (v: Value) => {
-    force(v);
-    const inner = typeof v === 'object' ? v.lazy : v;
-    if (typeof inner === 'number') {
-        if (inner < Number.MAX_SAFE_INTEGER - 1) {
-            return inner + 1;
+    v = force(v);
+    if (typeof v === 'number') {
+        if (v < Number.MAX_SAFE_INTEGER - 1) {
+            return v + 1;
         }
-        return BigInt(inner) + 1n;
+        return BigInt(v) + 1n;
     }
-    if (typeof inner === 'bigint') {
-        return inner + 1n;
+    if (typeof v === 'bigint') {
+        return v + 1n;
     }
     return 1;
 };
 
-const PIN = (v: Value) => {
-    // TODO: hash
-    return { hash: 'lolno', contents: v };
+const NAT = (v: Value) => {
+    v = force(v);
+    switch (typeof v) {
+        case 'bigint':
+        case 'number':
+            return v;
+        default:
+            return 0;
+    }
 };
 
-const LAW = (name: bigint, arity: number, body: Value): Value => {
+const PIN = (v: Value): Value => {
+    throw new Error(`no PIN op supported just yet`);
+    // TODO: hash
+    // return { hash: 'lolno', contents: v };
+};
+
+const LAW = (name: Value, arity: Value, body: Value): Value => {
     // TODO compile
     const f = () => {
         throw new Error('oof');
     };
-    f.length = arity;
+    const nameNat = BigInt(NAT(name));
+    f.length = Number(NAT(arity));
     f.body = body;
-    f.nameNat = name;
-    f.name = natToAscii(name);
+    f.nameNat = nameNat;
+    f.name = natToAscii(nameNat);
     return f;
 };
 
-const NCASE = (zero: Value, plus: Value, x: Value) => {
+const APP = (f: Value, x: Value): Value => ({ lazy: [f, x], forced: false });
+const APPS = (f: Value, ...args: Value[]) => {
+    while (args.length) {
+        f = APP(f, args.shift()!);
+    }
+    return f;
+};
+
+const NCASE = (zero: Value, plus: Value, x: Value): Value => {
     x = force(x);
     if (
         x === 0 ||
@@ -162,30 +220,43 @@ const NCASE = (zero: Value, plus: Value, x: Value) => {
         return zero;
     }
     if (typeof x === 'number') {
-        return [plus, x - 1];
+        return APP(plus, x - 1);
     } else {
-        return [plus, x - 1n];
+        return APP(plus, x - 1n);
     }
 };
 
 const PCASE = (p: Value, l: Value, a: Value, n: Value, x: Value) => {
+    x = force(x);
     if (typeof x === 'number' || typeof x === 'bigint') {
-        return typeof n === 'function' && n.length === 1 ? n(x) : [n, x];
+        return APP(n, x);
     }
     if (typeof x === 'function') {
-        return typeof l === 'function' && l.length === 3
-            ? l(x.nameNat, x.length, x.body)
-            : [l, x.nameNat, x.length, x.body];
+        return APPS(l, x.nameNat, x.length, x.body);
     }
-    if (Array.isArray(x)) {
-        const f = x.length === 2 ? x[0] : x.slice(0, -1);
-        const g = x[x.length - 1];
-        return typeof a === 'function' && a.length === 2 ? a(f, g) : [a, f, g];
+    if (typeof x === 'string') {
+        return APPS(p, PINS[x]);
     }
-    return typeof p === 'function' && p.length === 1
-        ? p(x.contents)
-        : [p, x.contents];
+    if (!Array.isArray(x.lazy)) {
+        throw new Error(
+            `force didnt work? shouldnt return a lazy with a non-app`,
+        );
+    }
+    return APPS(a, x.lazy[0], x.lazy[1]);
 };
 
-const $plus1 = (a: Value, b: Value, c: Value) =>
-    INC(typeof a === 'function' && a.length === 2 ? a(b, c) : [a, b, c]);
+const asLaw = (f: Function, name: bigint, body: Value): Law => {
+    const l: Law = f as any;
+    l.nameNat = name;
+    l.body = body;
+    return l;
+};
+
+const $plus1 = (a: Value, b: Value, c: Value) => APP('INC', APPS(a, b, c));
+PINS['$plus1'] = asLaw($plus1, asciiToNat('$plus1'), 0);
+function $plus(this: Law, a: Value, b: Value) {
+    return APPS('NCASE', b, APPS('$plus1', this, b), a);
+}
+PINS['$plus'] = asLaw($plus, asciiToNat('$plus'), 0);
+
+console.log(show(force(APPS('$plus', 2, 10))));

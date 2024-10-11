@@ -57,6 +57,10 @@ const newEnv = () => {
     return loc;
 };
 
+const runOp = (a: any, b: any, c: any) => {
+    throw new Error('no');
+};
+
 const Execute = (o: p) => {
     let env = newEnv();
 
@@ -91,7 +95,7 @@ const Execute = (o: p) => {
                     return null;
                 }
                 if (!self) env = pushEnv(env, n);
-                return jet(name, arity, env, o) ?? RunLaw(env, body, o);
+                // return jet(name, arity, env, o) ?? RunLaw(env, body, o);
             }
             case APP: {
                 env = pushEnv(env, mAPP.x(m, n));

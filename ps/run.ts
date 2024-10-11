@@ -275,6 +275,7 @@ if (!fname) {
 
 const rtn = opts['runtime'] ?? opts['r'];
 const rt = rtn === '3' ? runtime3 : rtn === 'jit' ? jsjit : runtime2;
+console.log(`RUNTIME: ${rtn}`);
 
 // We use the new hotness
 rt.setRequireOpPin(true);

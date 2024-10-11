@@ -6,11 +6,12 @@ N number | bigint
 */
 
 import { asciiToNat, natToAscii } from '../runtime/natToAscii';
+import { perf } from '../runtime/perf';
 
 export type Law = Function & { nameNat: bigint; body: Value };
 type Immediate = Law | number | bigint | string;
-type App = [Value, Value];
-type Lazy = { lazy: Immediate | App; forced: boolean };
+// type App = [Value, Value];
+type Lazy = [0 | 1, Value, Value] | [1, Immediate]; // { lazy: Immediate | App; forced: boolean };
 export type Value = Immediate | Lazy;
 
 export const PINS: Record<string, Value> = {
@@ -31,7 +32,9 @@ export const pinLaw = (f: Function, name = f.name) => {
     PINS[name] = l;
 };
 
-export const show = (v: Value): string => {
+export const show = (v: Value, trail: Value[] = []): string => {
+    if (trail.includes(v)) return 'recurse';
+    trail = [...trail, v];
     switch (typeof v) {
         case 'number':
         case 'bigint':
@@ -41,69 +44,155 @@ export const show = (v: Value): string => {
         case 'function':
             return `LAW(${natToAscii(v.nameNat)})`;
         case 'object':
-            if (Array.isArray(v.lazy)) {
-                return `APP(${show(v.lazy[0])} ${show(v.lazy[1])})`;
+            if (v.length === 3) {
+                return `APP(${show(v[1], trail)} ${show(v[2], trail)})`;
+                // return `aAPP`;
             }
-            return show(v.lazy);
+            return show(v[1], trail);
     }
+};
+
+export const forceDeep = (v: Value): Value => {
+    v = force(v);
+    if (Array.isArray(v) && v.length === 3) {
+        forceDeep(v[1]);
+        forceDeep(v[2]);
+    }
+    return v;
 };
 
 export const force = (v: Value): Value => {
     if (typeof v !== 'object') return v;
-    if (!v.forced) forceApp(v);
-    return !Array.isArray(v.lazy) ? force(v.lazy) : v;
+    if (!v[0]) forceApp(v);
+    collapseLazy(v);
+    // console.log('resolve', show(v));
+    return v.length === 2 ? v[1] : v;
+};
+
+const collapseLazy = (v: Lazy) => {
+    if (v.length === 2 && Array.isArray(v[1])) {
+        force(v[1]);
+        const inner = v[1];
+        // collapse down nested lazy
+        v[1] = inner[1];
+        if (inner.length === 3) {
+            v.push(inner[2]);
+        }
+    }
+};
+
+export const setLocal = (v: Lazy, n: Value) => {
+    if (Array.isArray(n)) {
+        v[0] = n[0];
+        v[1] = n[1];
+        if (n.length === 3) {
+            v[2] = n[2];
+        } else if (v.length === 3) {
+            v.pop();
+        }
+    } else {
+        v[0] = 1;
+        v[1] = n;
+        if (v.length === 3) v.pop();
+    }
+};
+
+const setLazy = (v: Lazy, n: Value) => {
+    if (v[0]) {
+        console.log(v, n);
+        throw new Error(`cant re-force an already forced`);
+    }
+    // console.log('setting yes', v);
+    v[0] = 1;
+    // if (Array.isArray(n)) {
+    //     v[1] = n[1];
+    //     if (n.length === 3) {
+    //         v[2] = n[2];
+    //     } else {
+    //         v.pop();
+    //     }
+    // } else {
+    v[1] = n;
+    if (v.length === 3) {
+        v.pop();
+    }
+    // }
 };
 
 const forceApp = (v: Value) => {
-    if (typeof v !== 'object' || v.forced || !Array.isArray(v.lazy)) return;
-    console.log('forceing', show(v));
-    v.forced = true;
-    const trail: { v: Lazy; arg: Value }[] = [{ v, arg: v.lazy[1] }];
-    let f: Value | Function = v.lazy[0];
+    if (typeof v !== 'object' || v[0]) return;
+    // console.log('forcing', show(v));
+    v[0] = 1;
+    const trail: { v: Lazy; arg: Value }[] = [{ v, arg: v[2] }];
+    let f: Value | Function = v[1];
     let self: null | Value = null;
     while (true) {
         switch (typeof f) {
             // LAW
             case 'function': {
-                if (f.length > trail.length) return; // nothing to see here
+                if (f.length > trail.length) {
+                    // console.log(
+                    //     'function wasnts more',
+                    //     f.length,
+                    //     trail.length,
+                    //     f,
+                    // );
+                    return; // nothing to see here
+                }
                 const dest = trail[f.length - 1];
                 const args = trail.splice(0, f.length).map((a) => a.arg);
+                // console.log('valling', f, 'with', args);
                 const result = f.apply(self ?? f, args);
-                dest.v.forced = true;
-                dest.v.lazy = result;
+                if (!trail.length) {
+                    v[0] = 0;
+                }
+                setLazy(dest.v, result);
                 f = result;
                 continue;
             }
             // PIN
             case 'string': {
                 let pin: Value | Function = PINS[f];
+                // console.log('got pin', f, pin);
                 if (pin == null) {
                     console.log(PINS);
                     throw new Error(`unknowwn pin ${f}`);
                 }
                 // PIN(LAW) wants the self to be the pin, not the law
-                if (typeof pin === 'function') {
-                    self = f;
+                // if (typeof pin === 'function') {
+                //     // lol ok so calling `this` with a string does weird things???
+                //     // ONLY if the function was created in an Eval. Like a cross-domain thing?
+                //     // idk. might also be bun-specific
+                //     // self = f;
+                // }
+                if (
+                    perf &&
+                    (typeof pin === 'number' || typeof pin === 'bigint') &&
+                    pin >= 0 &&
+                    pin <= 4
+                ) {
+                    perf.ops[pin as 0]++;
                 }
-                if (pin === 0) pin = LAW;
-                else if (pin === 1) pin = PCASE;
-                else if (pin === 2) pin = NCASE;
-                else if (pin === 3) pin = INC;
-                else if (pin === 4) pin = PIN;
+                if (pin === 0 || pin === 0n) pin = LAW;
+                else if (pin === 1 || pin === 1n) pin = PCASE;
+                else if (pin === 2 || pin === 2n) pin = NCASE;
+                else if (pin === 3 || pin === 3n) pin = INC;
+                else if (pin === 4 || pin === 4n) pin = PIN;
                 f = pin;
                 continue;
             }
             // APP or a lazy
             case 'object': {
-                if (Array.isArray(f.lazy)) {
-                    trail.unshift({ v: f, arg: f.lazy[1] });
-                    f = f.lazy[0];
+                if (f.length === 3) {
+                    trail.unshift({ v: f, arg: f[2] });
+                    f = f[1];
                 } else {
-                    f = f.lazy;
+                    f = f[1];
                 }
                 continue;
             }
             default:
+                // console.log('not a thing we can call', f);
                 // NAT
                 return;
         }
@@ -154,10 +243,7 @@ const LAW = (name: Value, arity: Value, body: Value): Value => {
     return f;
 };
 
-export const APP = (f: Value, x: Value): Value => ({
-    lazy: [f, x],
-    forced: false,
-});
+export const APP = (f: Value, x: Value): Value => [0, f, x];
 export const APPS = (f: Value, ...args: Value[]) => {
     while (args.length) {
         f = APP(f, args.shift()!);
@@ -183,6 +269,7 @@ const NCASE = (zero: Value, plus: Value, x: Value): Value => {
 
 const PCASE = (p: Value, l: Value, a: Value, n: Value, x: Value) => {
     x = force(x);
+    // console.log('pcase', x);
     if (typeof x === 'number' || typeof x === 'bigint') {
         return APP(n, x);
     }
@@ -192,12 +279,12 @@ const PCASE = (p: Value, l: Value, a: Value, n: Value, x: Value) => {
     if (typeof x === 'string') {
         return APPS(p, PINS[x]);
     }
-    if (!Array.isArray(x.lazy)) {
+    if (x.length !== 3) {
         throw new Error(
             `force didnt work? shouldnt return a lazy with a non-app`,
         );
     }
-    return APPS(a, x.lazy[0], x.lazy[1]);
+    return APPS(a, x[1], x[2]);
 };
 
 export const asLaw = (f: Function, name: bigint, body: Value): Law => {

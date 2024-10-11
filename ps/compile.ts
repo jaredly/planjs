@@ -1,12 +1,22 @@
 import objectHash from 'object-hash';
 import { findPins, NVal } from '../runtime/arraybuffer';
 import { APP, LAW, NAT, OPNAMES, PIN, Val } from '../runtime/types';
-import { asLaw, force, Law, PINS, show, Value } from './runtime';
+import {
+    asLaw,
+    force,
+    forceDeep,
+    Law,
+    PINS,
+    setLocal,
+    show,
+    Value,
+} from './runtime';
 import { asciiToNat, natToAscii } from '../runtime/natToAscii';
 import { RT } from '../runtime/runtime2';
+import { writeFileSync } from 'fs';
 
 const asApp = (v: Value): null | [Value, Value] =>
-    typeof v === 'object' && Array.isArray(v.lazy) ? v.lazy : null;
+    typeof v === 'object' && v.length === 3 ? [v[1], v[2]] : null;
 
 // NOTE: Not forcing anything here
 // looks like I don't in runtime2 either
@@ -17,8 +27,8 @@ const extractLets = (body: Value, lets: Value[]): Value => {
     if (!next) return body;
     // (1 v b)
     if (next[0] === 1 || next[0] === 1n) {
-        lets.push(top[1]);
-        return extractLets(next[1], lets);
+        lets.push(next[1]);
+        return extractLets(top[1], lets);
     }
     return body;
 };
@@ -34,12 +44,12 @@ const compileValue = (value: Value): string => {
         case 'string':
             return JSON.stringify(value);
         default:
-            if (Array.isArray(value.lazy)) {
-                return `{forced: false, lazy:[${compileValue(
-                    value.lazy[0],
-                )}, ${compileValue(value.lazy[1])}]}`;
+            if (value.length === 3) {
+                return `[${value[0]}, ${compileValue(value[1])}, ${compileValue(
+                    value[2],
+                )}]`;
             }
-            return compileValue(value.lazy);
+            return compileValue(value[1]);
     }
 };
 
@@ -51,23 +61,26 @@ const compileBody = (value: Value, maxIndex: number): string => {
             if (value <= maxIndex) {
                 return `$${value}`;
             }
-            return compileValue(value);
+            return 'lol' + compileValue(value);
         case 'object':
             const pair = asApp(value);
             if (!pair) return compileValue(value);
             if (pair[0] === 2 || pair[0] === 2n) return compileValue(pair[1]);
             const inner = asApp(pair[0]);
             if (inner && (inner[0] === 0 || inner[0] === 0n)) {
-                return `{forced: false, lazy:[${compileBody(
-                    inner[1],
+                return `[0, ${compileBody(inner[1], maxIndex)}, ${compileBody(
+                    pair[1],
                     maxIndex,
-                )}, ${compileBody(pair[1], maxIndex)}]}`;
+                )}]`;
             }
     }
     return compileValue(value);
 };
 
 export const compile = (name: string, arity: number, body: Value) => {
+    if (arity === 0) {
+        return compileBody(body, 0);
+    }
     const args: string[] = [];
     for (let i = 1; i <= arity; i++) {
         args.push(`$${i}`);
@@ -76,17 +89,14 @@ export const compile = (name: string, arity: number, body: Value) => {
     const inner = extractLets(body, lets);
     const maxIndex = arity + lets.length;
     return `asLaw(function ${name} (${args.join(', ')}) {${lets
-        .map(
-            (_, i) =>
-                `\n    const $${i + arity + 1} = {lazy: 0, forced: false};`,
-        )
+        .map((_, i) => `\n    const $${i + arity + 1} = [0, -1, -1];`)
         .join('')}${lets
         .map(
             (value, i) =>
-                `\n    $${i + arity + 1}.lazy = ${compileBody(
+                `\n    setLocal($${i + arity + 1}, ${compileBody(
                     value,
                     maxIndex,
-                )}`,
+                )});`,
         )
         .join('')}
     return ${compileBody(inner, maxIndex)};
@@ -122,13 +132,11 @@ const oneVal = (
             );
             return name;
         case APP:
-            return {
-                lazy: [
-                    oneVal(val.v[1], pins, fns),
-                    oneVal(val.v[2], pins, fns),
-                ],
-                forced: false,
-            };
+            return [
+                0,
+                oneVal(val.v[1], pins, fns),
+                oneVal(val.v[2], pins, fns),
+            ];
         case NAT:
             return val.v[1];
     }
@@ -176,10 +184,34 @@ export const jsjit: RT = {
         const code = Object.entries(tops)
             .map(([name, body]) => `PINS[${JSON.stringify(name)}] = ${body};`)
             .join('\n\n');
-        console.log(code);
+        // console.log(code);
+        writeFileSync(
+            'code.js',
+            `import {asLaw, PINS, forceDeep, show, setLocal} from './ps/runtime';\n` +
+                code +
+                '\nconsole.log(show(forceDeep(PINS.main)))',
+        );
 
-        new Function(`{asLaw, PINS}`, code)({ asLaw, PINS });
+        new Function(`{asLaw, PINS, setLocal}`, code)({
+            asLaw,
+            PINS,
+            setLocal,
+        });
 
-        return show(force(PINS.main));
+        PINS['$pl_1255'] = asLaw(
+            (a: Value, b: Value) => {
+                a = force(a);
+                b = force(b);
+                if (typeof a !== 'bigint' && typeof a !== 'number') return 0;
+                if (typeof b !== 'bigint' && typeof b !== 'number') return 0;
+                if (typeof a === 'number' && typeof b === 'number')
+                    return a + b;
+                return BigInt(a) + BigInt(b);
+            },
+            0n,
+            0,
+        );
+
+        return show(forceDeep(PINS.main));
     },
 };

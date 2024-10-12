@@ -134,8 +134,8 @@ const setLazy = (v: Lazy, n: Value) => {
 const forceApp = (v: Value) => {
     if (typeof v !== 'object' || v[0]) return;
     v[0] = 1;
-    const trail: { v: Lazy; arg: Value }[] = [{ v, arg: v[2] }];
-    let f: Value | Function = v[1];
+    const trail: { v: Lazy; arg: Value }[] = [];
+    let f: Value | Function = v;
     let self: null | Value = null;
     while (true) {
         switch (typeof f) {
@@ -146,7 +146,7 @@ const forceApp = (v: Value) => {
                 }
                 const dest = trail[f.length - 1];
                 const args = trail.splice(0, f.length).map((a) => a.arg);
-                const result = f.apply(self ?? f, args);
+                const result: Value = f.apply(self ?? f, args);
                 if (!trail.length) {
                     v[0] = 0;
                 }

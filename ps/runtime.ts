@@ -32,6 +32,23 @@ export const pinLaw = (f: Function, name = f.name) => {
     PINS[name] = l;
 };
 
+const unlazy = (v: Value) => {
+    if (typeof v === 'object' && v.length === 2) return unlazy(v[1]);
+    return v;
+};
+
+const unwrapList = (v: Value, lst: Value[]) => {
+    if (typeof v === 'object' && v.length === 3) {
+        const first = unlazy(v[1]);
+        if (typeof first === 'number' || typeof first === 'bigint') {
+            lst.push(first);
+            unwrapList(v[2], lst);
+            return;
+        }
+    }
+    lst.push(v);
+};
+
 export const show = (v: Value, trail: Value[] = []): string => {
     if (trail.includes(v)) return 'recurse';
     trail = [...trail, v];
@@ -45,6 +62,11 @@ export const show = (v: Value, trail: Value[] = []): string => {
             return `LAW(${natToAscii(v.nameNat)})`;
         case 'object':
             if (v.length === 3) {
+                if (typeof v[1] === 'number' || typeof v[1] === 'bigint') {
+                    const lst: Value[] = [];
+                    unwrapList(v, lst);
+                    return `[${lst.map((l) => show(l, trail)).join(', ')}]`;
+                }
                 return `APP(${show(v[1], trail)} ${show(v[2], trail)})`;
                 // return `aAPP`;
             }

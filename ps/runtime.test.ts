@@ -10,7 +10,5 @@ tops.forEach(parseTop);
 
 test('fibplease', () => {
     const res = jsjit.run(APPS(named.main, { v: [NAT, 10n] }));
-    expect(res).toEqual(
-        'APP(0 APP(1 APP(1 APP(2 APP(3 APP(5 APP(8 APP(13 APP(21 APP(34 PIN(nil_e620)))))))))))',
-    );
+    expect(res).toEqual('[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, PIN(nil_e620)]');
 });

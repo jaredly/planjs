@@ -1,4 +1,4 @@
-import { Sexp } from './run';
+import { Sexp } from './parseTop';
 
 const white = /\s/;
 const skip = (text: string, i: number) => {

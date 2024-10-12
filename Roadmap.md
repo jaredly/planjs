@@ -1,4 +1,12 @@
 
+# Optimizing the JIT compiler:
+
+- [ ] if we're calling a LAW, we can eliminate a bunch of unnecessary APPs because we know the (minimum) arity
+- [ ] let's try inlining stuff! What does that do?
+- [ ] sooo it turns out the jitted code is only really responsible for producing a data structure that gets pushed onto the stack. seems like we want a VM anyways
+- [ ] areee there some functions that we can through fancy analysis turn into strict? Thus allowing them to be much more effectively JITted? Like, you could inline a PCASE as a switch or something...
+
+
 # OK so something muuch simpler ought to be:
 let's compile to javascript.
 

@@ -235,7 +235,7 @@ const OP_FNS = {
 
 export type RT = {
     setRequireOpPin(v: boolean): void;
-    run: (v: Val) => Val | string;
+    run: (v: Val, saveTo?: string) => Val | string;
 };
 export const runtime2: RT = {
     setRequireOpPin,

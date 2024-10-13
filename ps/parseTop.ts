@@ -1,16 +1,17 @@
 import { asciiToNat } from '../runtime/natToAscii';
 import { Val, OPS, PIN, LAW, APP, NAT, APPS } from '../runtime/types';
+import { readTop } from './readTop';
 
 export type Sexp = string | Sexp[];
 // export type Top = {
 //     type: 'def',
 //     name: string,
 // }
-export const named: Record<string, Val> = {};
+// export const named: Record<string, Val> = {};
 
-export const parseTop = (top: Sexp) => {
+export const parseTop = (top: Sexp, named: Record<string, Val>) => {
     if (typeof top === 'string') {
-        return parse(top, null);
+        return parse(top, null, named);
     }
     if (
         top.length === 4 &&
@@ -33,7 +34,7 @@ export const parseTop = (top: Sexp) => {
         // if (needed.length) {
         //     throw new Error(`undefined variables in toplevel: ${needed}`);
         // }
-        const body = parse(top[3], { args, name: top[1], lcount: 0 });
+        const body = parse(top[3], { args, name: top[1], lcount: 0 }, named);
         named[top[1]] = {
             v: [
                 PIN,
@@ -56,7 +57,7 @@ export const parseTop = (top: Sexp) => {
                         LAW,
                         asciiToNat(top[1]),
                         0n,
-                        parse(top[2], { args, name: top[1], lcount: 0 }),
+                        parse(top[2], { args, name: top[1], lcount: 0 }, named),
                     ],
                 },
             ],
@@ -110,6 +111,7 @@ const lapps = (inLaw: boolean, ...items: Val[]): Val => {
 const parse = (
     item: Sexp,
     parent: null | { args: string[]; name: string; lcount: number },
+    named: Record<string, Val>,
 ): Val => {
     if (typeof item === 'string') {
         if (item[0] === '$') {
@@ -156,7 +158,7 @@ const parse = (
                 if (bindings.length === 1) {
                     throw new Error(`dangling entry in let binding list`);
                 }
-                return parse(body, parent);
+                return parse(body, parent, named);
             }
             const name = bindings.shift()!;
             const value = bindings.shift()!;
@@ -169,7 +171,7 @@ const parse = (
             //     );
             // }
             // args.push(name);
-            return APPS(1, parse(value, parent), next());
+            return APPS(1, parse(value, parent, named), next());
         };
 
         // const pairs = []
@@ -188,11 +190,15 @@ const parse = (
         });
         let ln = item[1].length;
         if (!parent) {
-            const body = parse(item[2], {
-                args: innerArgs,
-                name: 'anon',
-                lcount: 0,
-            });
+            const body = parse(
+                item[2],
+                {
+                    args: innerArgs,
+                    name: 'anon',
+                    lcount: 0,
+                },
+                named,
+            );
             return { v: [LAW, asciiToNat('anon'), BigInt(ln), body] };
         }
         let needed: string[] = [];
@@ -208,11 +214,15 @@ const parse = (
 
         parent.lcount += 1;
         const name = parent.name + parent.lcount;
-        const body = parse(item[2], {
-            args: innerArgs,
-            name,
-            lcount: 0,
-        });
+        const body = parse(
+            item[2],
+            {
+                args: innerArgs,
+                name,
+                lcount: 0,
+            },
+            named,
+        );
         // TODO: scoping, need to wrap if used.
         const law: Val = { v: [LAW, asciiToNat(name), BigInt(ln), body] };
         if (needed.length) {
@@ -227,10 +237,17 @@ const parse = (
         return law;
     }
 
-    const first = parse(item[0], parent);
+    const first = parse(item[0], parent, named);
     return lapps(
         parent != null,
         first,
-        ...item.slice(1).map((item) => parse(item, parent)),
+        ...item.slice(1).map((item) => parse(item, parent, named)),
     );
+};
+
+export const getMain = (text: string) => {
+    const named: Record<string, Val> = {};
+    const tops = readTop(text);
+    tops.forEach((t) => parseTop(t, named));
+    return named.main;
 };

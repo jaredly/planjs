@@ -8,7 +8,7 @@ import { NAT, Val } from '../runtime/types';
 import { parse as parseNice, showNice } from '../pst';
 import { perfMap, reportPerf, showPerf, trackPerf } from '../runtime/perf';
 import { jsjit } from './compile';
-import { parseTop, named } from './parseTop';
+import { parseTop, getMain } from './parseTop';
 
 const usage = `run.ts [opts] fname ...args
 opts:
@@ -40,12 +40,10 @@ console.log(`RUNTIME: ${rtn}`);
 // We use the new hotness
 rt.setRequireOpPin(true);
 
-const tops = readTop(readFileSync(fname, 'utf8'));
-// console.log(tops);
-tops.forEach(parseTop);
+const main = getMain(readFileSync(fname, 'utf8'));
 
 if (opts['show'] || opts['plan']) {
-    console.log(showNice(rt.run(named.main)));
+    console.log(showNice(rt.run(main)));
 }
 
 // Object.entries(named).forEach(([name, v]) => {
@@ -58,16 +56,13 @@ if (args.length) {
     console.log(
         showNice(
             rt.run(
-                APPS(
-                    named.main,
-                    ...args.map((a): Val => ({ v: [NAT, BigInt(+a)] })),
-                ),
+                APPS(main, ...args.map((a): Val => ({ v: [NAT, BigInt(+a)] }))),
             ),
         ),
     );
 } else {
     console.log('here we are');
-    console.log(showNice(rt.run(named.main)));
+    console.log(showNice(rt.run(main)));
 }
 showPerf(reportPerf()!);
 
@@ -78,12 +73,7 @@ if (make_chart) {
     const allNames: string[] = [];
     for (let i = 0; i < 15; i++) {
         trackPerf();
-        rt.run(
-            APPS(
-                named.main,
-                ...args.map((a): Val => ({ v: [NAT, BigInt(i)] })),
-            ),
-        );
+        rt.run(APPS(main, ...args.map((a): Val => ({ v: [NAT, BigInt(i)] }))));
         const line = perfMap(reportPerf()!);
         all.push(line);
         Object.keys(line).forEach((name) => {

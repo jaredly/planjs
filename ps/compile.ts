@@ -16,7 +16,9 @@ import { RT } from '../runtime/runtime2';
 import { writeFileSync } from 'fs';
 
 const asApp = (v: Value): null | [Value, Value] =>
-    typeof v === 'object' && v.length === 3 ? [v[1], v[2]] : null;
+    typeof v === 'object' && v.length === 3 && v[2].length === 1
+        ? [v[1], v[2][0]]
+        : null;
 
 // NOTE: Not forcing anything here
 // looks like I don't in runtime2 either
@@ -45,9 +47,9 @@ const compileValue = (value: Value): string => {
             return JSON.stringify(value);
         default:
             if (value.length === 3) {
-                return `[${value[0]}, ${compileValue(value[1])}, ${compileValue(
-                    value[2],
-                )}]`;
+                return `[${value[0]}, ${compileValue(value[1])}, [${value[2]
+                    .map(compileValue)
+                    .join(', ')}]]`;
             }
             return compileValue(value[1]);
     }
@@ -68,10 +70,10 @@ const compileBody = (value: Value, maxIndex: number): string => {
             if (pair[0] === 2 || pair[0] === 2n) return compileValue(pair[1]);
             const inner = asApp(pair[0]);
             if (inner && (inner[0] === 0 || inner[0] === 0n)) {
-                return `[0, ${compileBody(inner[1], maxIndex)}, ${compileBody(
+                return `[0, ${compileBody(inner[1], maxIndex)}, [${compileBody(
                     pair[1],
                     maxIndex,
-                )}]`;
+                )}]]`;
             }
     }
     return compileValue(value);
@@ -89,7 +91,7 @@ export const compile = (name: string, arity: number, body: Value) => {
     const inner = extractLets(body, lets);
     const maxIndex = arity + lets.length;
     const fn = `function ${name} (${args.join(', ')}) {${lets
-        .map((_, i) => `\n    const $${i + arity + 1} = [0, -1, -1];`)
+        .map((_, i) => `\n    const $${i + arity + 1} = [0, -1, [-1]];`)
         .join('')}${lets
         .map(
             (value, i) =>
@@ -140,7 +142,7 @@ const oneVal = (
             return [
                 0,
                 oneVal(val.v[1], pins, fns),
-                oneVal(val.v[2], pins, fns),
+                [oneVal(val.v[2], pins, fns)],
             ];
         case NAT:
             return val.v[1];
@@ -184,18 +186,19 @@ export const jsjit: RT = {
     setRequireOpPin(v) {
         if (!v) throw new Error(`not about that live`);
     },
-    run(v) {
+    run(v, saveTo?: string) {
         const tops = compileVal(v);
         const code = Object.entries(tops)
             .map(([name, body]) => `PINS[${JSON.stringify(name)}] = ${body};`)
             .join('\n\n');
-        // console.log(code);
-        writeFileSync(
-            'code.js',
-            `import {asLaw, PINS, forceDeep, show, setLocal} from './ps/runtime';\n` +
-                code +
-                '\nconsole.log(show(forceDeep(PINS.main)))',
-        );
+        if (saveTo) {
+            writeFileSync(
+                saveTo,
+                `import {asLaw, PINS, forceDeep, show, setLocal} from './ps/runtime';\n` +
+                    code +
+                    '\nconsole.log(show(forceDeep(PINS.main)))',
+            );
+        }
 
         new Function(`{asLaw, PINS, setLocal}`, code)({
             asLaw,
@@ -217,6 +220,8 @@ export const jsjit: RT = {
             0,
         );
 
+        console.log(PINS.main);
+        console.log(show(PINS.main));
         return show(forceDeep(PINS.main));
     },
 };

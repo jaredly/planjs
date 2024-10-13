@@ -1,14 +1,17 @@
-import { test, expect } from 'bun:test';
-import { jsjit } from './compile';
-import { APPS, NAT } from '../runtime/types';
-import { readTop } from './readTop';
+import { expect, test } from 'bun:test';
 import { readFileSync } from 'fs';
-import { named, parseTop } from './parseTop';
+import { APPS, NAT } from '../runtime/types';
+import { jsjit } from './compile';
+import { getMain } from './parseTop';
 
-const tops = readTop(readFileSync('./ps/example_fib.clj', 'utf8'));
-tops.forEach(parseTop);
+test('simple', () => {
+    const main = getMain(`(defn main [x] (1 x))`);
+    const res = jsjit.run(APPS(main, { v: [NAT, 10n] }));
+    expect(res).toEqual('[1, 10]');
+});
 
 test('fibplease', () => {
-    const res = jsjit.run(APPS(named.main, { v: [NAT, 10n] }));
+    const main = getMain(readFileSync('./ps/example_fib.clj', 'utf8'));
+    const res = jsjit.run(APPS(main, { v: [NAT, 10n] }));
     expect(res).toEqual('[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, PIN(nil_e620)]');
 });

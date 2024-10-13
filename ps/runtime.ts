@@ -11,7 +11,11 @@ import { perf } from '../runtime/perf';
 export type Law = Function & { nameNat: bigint; body: Value };
 type Immediate = Law | number | bigint | string;
 // type App = [Value, Value];
-type Lazy = [0 | 1, Value, Value] | [1, Immediate]; // { lazy: Immediate | App; forced: boolean };
+
+// Invariant:
+// An app is either [NotAnApp, maybe_multiple_values]
+// OR [Value, [one_single_value]]
+type Lazy = [0 | 1, Value, [Value]] | [1, Immediate]; // { lazy: Immediate | App; forced: boolean };
 export type Value = Immediate | Lazy;
 
 export const PINS: Record<string, Value> = {
@@ -42,7 +46,11 @@ const unwrapList = (v: Value, lst: Value[]) => {
         const first = unlazy(v[1]);
         if (typeof first === 'number' || typeof first === 'bigint') {
             lst.push(first);
-            unwrapList(v[2], lst);
+            if (v[2].length > 1) {
+                lst.push(...v[2]);
+            } else {
+                unwrapList(v[2][0], lst);
+            }
             return;
         }
     }
@@ -67,7 +75,9 @@ export const show = (v: Value, trail: Value[] = []): string => {
                     unwrapList(v, lst);
                     return `[${lst.map((l) => show(l, trail)).join(', ')}]`;
                 }
-                return `APP(${show(v[1], trail)} ${show(v[2], trail)})`;
+                return `APP(${show(v[1], trail)} ${v[2].map((v) =>
+                    show(v, trail),
+                )})`;
                 // return `aAPP`;
             }
             return show(v[1], trail);
@@ -78,7 +88,7 @@ export const forceDeep = (v: Value): Value => {
     v = force(v);
     if (Array.isArray(v) && v.length === 3) {
         forceDeep(v[1]);
-        forceDeep(v[2]);
+        v[2].forEach(forceDeep);
     }
     return v;
 };
@@ -189,7 +199,10 @@ const forceApp = (v: Value) => {
             // APP or a lazy
             case 'object': {
                 if (f.length === 3) {
-                    trail.unshift({ v: f, arg: f[2] });
+                    if (f[2].length > 1) {
+                        throw new Error('not yet padawan');
+                    }
+                    trail.unshift({ v: f, arg: f[2][0] });
                     f = f[1];
                 } else {
                     f = f[1];
@@ -248,7 +261,7 @@ const LAW = (name: Value, arity: Value, body: Value): Value => {
     return f;
 };
 
-export const APP = (f: Value, x: Value): Value => [0, f, x];
+export const APP = (f: Value, x: Value): Value => [0, f, [x]];
 export const APPS = (f: Value, ...args: Value[]) => {
     while (args.length) {
         f = APP(f, args.shift()!);
@@ -289,7 +302,10 @@ const PCASE = (p: Value, l: Value, a: Value, n: Value, x: Value) => {
             `force didnt work? shouldnt return a lazy with a non-app`,
         );
     }
-    return APPS(a, x[1], x[2]);
+    // if (x[2].length > 1) {
+    //     return APPS(a, [0, x[1], x[2].slice(0, -1)], x[2][x[2].length - 1]);
+    // }
+    return APPS(a, x[1], x[2][0]);
 };
 
 export const asLaw = (f: Function, name: bigint, body: Value): Law => {

@@ -6,7 +6,7 @@ import { getMain } from './parseTop';
 
 test('simple', () => {
     const main = getMain(`(defn main [x] (1 x))`);
-    const res = jsjit.run(APPS(main, { v: [NAT, 10n] }));
+    const res = jsjit.run(APPS(main, { v: [NAT, 10n] }), 'simple.js');
     expect(res).toEqual('[1, 10]');
 });
 
@@ -16,7 +16,7 @@ test('add', () => {
 
 (defn main [x] (+ 12 x))
         `);
-    const res = jsjit.run(APPS(main, { v: [NAT, 10n] }));
+    const res = jsjit.run(APPS(main, { v: [NAT, 10n] }), 'add.js');
     expect(res).toEqual('22');
 });
 
@@ -28,12 +28,12 @@ test('map', () => {
 
 (defn main [x] (map (+ x) [1 2 3 4]))
         `);
-    const res = jsjit.run(APPS(main, { v: [NAT, 10n] }));
+    const res = jsjit.run(APPS(main, { v: [NAT, 10n] }), 'map.js');
     expect(res).toEqual('[11, 12, 13, 14]');
 });
 
 test('fibplease', () => {
     const main = getMain(readFileSync('./ps/example_fib.clj', 'utf8'));
-    const res = jsjit.run(APPS(main, { v: [NAT, 10n] }));
+    const res = jsjit.run(APPS(main, { v: [NAT, 10n] }), 'fib.js');
     expect(res).toEqual('[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, PIN(nil_e620)]');
 });

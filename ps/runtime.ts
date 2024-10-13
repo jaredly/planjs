@@ -8,15 +8,15 @@ N number | bigint
 import { asciiToNat, natToAscii } from '../runtime/natToAscii';
 import { perf } from '../runtime/perf';
 
-export type Law = Function & { nameNat: bigint; body: Value };
-type Immediate = Law | number | bigint | string;
 // type App = [Value, Value];
 
 // Invariant:
 // An app is either [NotAnApp, maybe_multiple_values]
 // OR [Value, [one_single_value]]
-type Lazy = [0 | 1, Value, [Value]] | [1, Immediate]; // { lazy: Immediate | App; forced: boolean };
+type Lazy = [0 | 1, Value, [Value, ...Value[]]] | [1, Immediate]; // { lazy: Immediate | App; forced: boolean };
 export type Value = Immediate | Lazy;
+export type Immediate = Law | number | bigint | string;
+export type Law = Function & { nameNat: bigint; body: Value };
 
 export const PINS: Record<string, Value> = {
     LAW: 0,
@@ -315,3 +315,5 @@ export const asLaw = (f: Function, name: bigint, body: Value): Law => {
     l.body = body;
     return l;
 };
+
+export const OP_FNS = { PCASE, LAW, PIN, INC, NCASE };

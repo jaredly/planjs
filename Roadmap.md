@@ -1,4 +1,9 @@
 
+# Multiple Args at once:
+
+- after ... parsing ... do a pass on the Value's, collapsing applications where the root's arity is known.
+
+
 # Optimizing the JIT compiler:
 
 - [ ] if we're calling a LAW, we can eliminate a bunch of unnecessary APPs because we know the (minimum) arity

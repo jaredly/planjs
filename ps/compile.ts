@@ -5,7 +5,9 @@ import {
     asLaw,
     force,
     forceDeep,
+    Immediate,
     Law,
+    OP_FNS,
     PINS,
     setLocal,
     show,
@@ -35,7 +37,7 @@ const extractLets = (body: Value, lets: Value[]): Value => {
     return body;
 };
 
-const compileValue = (value: Value): string => {
+const compileValue = (value: Body): string => {
     switch (typeof value) {
         case 'bigint':
             return value.toString() + 'n';
@@ -46,6 +48,11 @@ const compileValue = (value: Value): string => {
         case 'string':
             return JSON.stringify(value);
         default:
+            if (value.length === 2 && value[0] === 3) {
+                if (value[1] === 0) return 'this';
+                return `$${value[1]}`;
+            }
+            maybeCollapse(value);
             if (value.length === 3) {
                 return `[${value[0]}, ${compileValue(value[1])}, [${value[2]
                     .map(compileValue)
@@ -55,33 +62,97 @@ const compileValue = (value: Value): string => {
     }
 };
 
-const compileBody = (value: Value, maxIndex: number): string => {
+// type Lazy = [0 | 1, Value, [Value, ...Value[]]] | [1, Immediate]; // { lazy: Immediate | App; forced: boolean };
+// export type Value = Immediate | Lazy;
+// type Immediate = Law | number | bigint | string;
+// export type Law = Function & { nameNat: bigint; body: Value };
+type BLazy = [0 | 1, Body, [Body, ...Body[]]] | [1, Immediate];
+type Body = Immediate | BLazy | [3, number]; /* (ref int) */
+
+const toBody = (value: Value, maxIndex: number): Body => {
     switch (typeof value) {
         case 'bigint':
         case 'number':
-            if (value === 0 || value === 0n) return 'this';
             if (value <= maxIndex) {
-                return `$${value}`;
+                return [3, Number(value)];
             }
-            return 'lol' + compileValue(value);
+            return value;
         case 'object':
             const pair = asApp(value);
-            if (!pair) return compileValue(value);
-            if (pair[0] === 2 || pair[0] === 2n) return compileValue(pair[1]);
+            if (!pair) return value;
+            if (pair[0] === 2 || pair[0] === 2n) return pair[1];
             const inner = asApp(pair[0]);
             if (inner && (inner[0] === 0 || inner[0] === 0n)) {
-                return `[0, ${compileBody(inner[1], maxIndex)}, [${compileBody(
-                    pair[1],
-                    maxIndex,
-                )}]]`;
+                return [
+                    0,
+                    toBody(inner[1], maxIndex),
+                    [toBody(pair[1], maxIndex)],
+                ];
             }
     }
-    return compileValue(value);
+    return value;
+};
+
+// hrmmmmm ok so this needs to happen /after/ translating a BODY to ~normal code.
+// which means, we want a BODYAST that we can work on, that shares some similarities
+// to the normal AST.
+export const maybeCollapse = (target: Body) => {
+    if (1 || typeof target !== 'object' || target[0] || target[2].length > 1)
+        return;
+    const trail: { v: BLazy; arg: Body }[] = [];
+    let f: Body | Function = target;
+    let self: null | Body = null;
+    while (true) {
+        switch (typeof f) {
+            case 'string':
+                let inner: Value | Function = PINS[f];
+                if (inner === 0 || inner === 0n) inner = OP_FNS.LAW;
+                if (inner === 1 || inner === 1n) inner = OP_FNS.PCASE;
+                if (inner === 2 || inner === 2n) inner = OP_FNS.NCASE;
+                if (inner === 3 || inner === 3n) inner = OP_FNS.INC;
+                if (inner === 4 || inner === 4n) inner = OP_FNS.PIN;
+                self = f;
+                f = inner;
+                continue;
+            case 'function':
+                if (f.length <= trail.length) {
+                    const dest = trail[f.length - 1];
+                    dest.v[0] = 0;
+                    dest.v[1] = self ?? (f as Law);
+                    dest.v[2] = trail.slice(0, f.length).map((t) => t.arg) as [
+                        Value,
+                        ...Value[],
+                    ];
+                }
+                return;
+            case 'object':
+                if (f[0]) {
+                    f = f[1];
+                    continue;
+                }
+                if (f[2].length > 1) {
+                    console.warn('ignoring possible further-collapsible thing');
+                    return;
+                }
+                maybeCollapse(f[2][0]);
+                trail.unshift({ v: f, arg: f[2][0] });
+                f = f[1];
+                continue;
+            case 'number':
+            case 'bigint':
+                const dest = trail[trail.length - 1];
+                dest.v[0] = 0;
+                dest.v[1] = f;
+                dest.v[2] = trail.map((t) => t.arg) as [Value, ...Value[]];
+                return;
+        }
+        break;
+    }
 };
 
 export const compile = (name: string, arity: number, body: Value) => {
     if (arity === 0) {
-        return compileBody(body, 0);
+        return compileValue(toBody(body, 0));
     }
     const args: string[] = [];
     for (let i = 1; i <= arity; i++) {
@@ -95,13 +166,12 @@ export const compile = (name: string, arity: number, body: Value) => {
         .join('')}${lets
         .map(
             (value, i) =>
-                `\n    setLocal($${i + arity + 1}, ${compileBody(
-                    value,
-                    maxIndex,
+                `\n    setLocal($${i + arity + 1}, ${compileValue(
+                    toBody(value, maxIndex),
                 )});`,
         )
         .join('')}
-    return ${compileBody(inner, maxIndex)};
+    return ${compileValue(toBody(inner, maxIndex))};
 }`;
     const SIMPLE = true;
     if (SIMPLE) {
@@ -177,7 +247,9 @@ export const compileVal = (val: Val) => {
         }
     });
 
-    toplevel.main = compileValue(oneVal(changed, pinHashes, toplevel));
+    const main = oneVal(changed, pinHashes, toplevel);
+
+    toplevel.main = compileValue(main);
 
     return toplevel;
 };

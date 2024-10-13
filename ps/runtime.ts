@@ -36,12 +36,13 @@ export const pinLaw = (f: Function, name = f.name) => {
     PINS[name] = l;
 };
 
-const unlazy = (v: Value) => {
-    if (typeof v === 'object' && v.length === 2) return unlazy(v[1]);
+const unlazy = (v: Body) => {
+    if (typeof v === 'object' && v.length === 2 && v[0] === 1)
+        return unlazy(v[1]);
     return v;
 };
 
-const unwrapList = (v: Value, lst: Value[]) => {
+const unwrapList = (v: Body, lst: Body[]) => {
     if (typeof v === 'object' && v.length === 3) {
         const first = unlazy(v[1]);
         if (typeof first === 'number' || typeof first === 'bigint') {
@@ -57,7 +58,10 @@ const unwrapList = (v: Value, lst: Value[]) => {
     lst.push(v);
 };
 
-export const show = (v: Value, trail: Value[] = []): string => {
+export type BLazy = [0 | 1, Body, [Body, ...Body[]]] | [1, Immediate];
+export type Body = Immediate | BLazy | [3, number]; /* (ref int) */
+
+export const show = (v: Body, trail: Body[] = []): string => {
     if (trail.includes(v)) return 'recurse';
     trail = [...trail, v];
     switch (typeof v) {

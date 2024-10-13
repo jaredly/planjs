@@ -37,7 +37,10 @@ const extractLets = (body: Value, lets: Value[]): Value => {
     return body;
 };
 
-const compileValue = (value: Body): string => {
+const compileValue = (
+    value: Body,
+    pinArities: Record<string, number>,
+): string => {
     switch (typeof value) {
         case 'bigint':
             return value.toString() + 'n';
@@ -52,13 +55,16 @@ const compileValue = (value: Body): string => {
                 if (value[1] === 0) return 'this';
                 return `$${value[1]}`;
             }
-            maybeCollapse(value);
+            maybeCollapse(value, pinArities);
             if (value.length === 3) {
-                return `[${value[0]}, ${compileValue(value[1])}, [${value[2]
-                    .map(compileValue)
+                return `[${value[0]}, ${compileValue(
+                    value[1],
+                    pinArities,
+                )}, [${value[2]
+                    .map((v) => compileValue(v, pinArities))
                     .join(', ')}]]`;
             }
-            return compileValue(value[1]);
+            return compileValue(value[1], pinArities);
     }
 };
 
@@ -96,36 +102,60 @@ const toBody = (value: Value, maxIndex: number): Body => {
 // hrmmmmm ok so this needs to happen /after/ translating a BODY to ~normal code.
 // which means, we want a BODYAST that we can work on, that shares some similarities
 // to the normal AST.
-export const maybeCollapse = (target: Body) => {
+export const maybeCollapse = (
+    target: Body,
+    pinArities: Record<string, number>,
+) => {
     if (1 || typeof target !== 'object' || target[0] || target[2].length > 1)
         return;
+    console.log('consider', show(target));
     const trail: { v: BLazy; arg: Body }[] = [];
     let f: Body | Function = target;
     let self: null | Body = null;
     while (true) {
+        console.log(`at`, f);
         switch (typeof f) {
-            case 'string':
-                let inner: Value | Function = PINS[f];
-                if (inner === 0 || inner === 0n) inner = OP_FNS.LAW;
-                if (inner === 1 || inner === 1n) inner = OP_FNS.PCASE;
-                if (inner === 2 || inner === 2n) inner = OP_FNS.NCASE;
-                if (inner === 3 || inner === 3n) inner = OP_FNS.INC;
-                if (inner === 4 || inner === 4n) inner = OP_FNS.PIN;
-                self = f;
-                f = inner;
-                continue;
-            case 'function':
-                if (f.length <= trail.length) {
-                    const dest = trail[f.length - 1];
-                    dest.v[0] = 0;
-                    dest.v[1] = self ?? (f as Law);
-                    dest.v[2] = trail.slice(0, f.length).map((t) => t.arg) as [
-                        Value,
-                        ...Value[],
-                    ];
-                }
+            case 'string': {
+                // let inner: Value | Function = PINS[f];
+                // if (!inner) throw new Error(`unknown pinnn ${f}`);
+                // if (inner === 0 || inner === 0n) inner = OP_FNS.LAW;
+                // if (inner === 1 || inner === 1n) inner = OP_FNS.PCASE;
+                // if (inner === 2 || inner === 2n) inner = OP_FNS.NCASE;
+                // if (inner === 3 || inner === 3n) inner = OP_FNS.INC;
+                // if (inner === 4 || inner === 4n) inner = OP_FNS.PIN;
+                // self = f;
+                // f = inner;
+                const arity = pinArities[f];
+                if (!arity) throw new Error(`unknown pin ${f}`);
+
+                const dest = trail[Math.min(trail.length, arity) - 1];
+                dest.v[0] = 0;
+                dest.v[1] = f;
+                dest.v[2] = trail.slice(0, arity).map((t) => t.arg) as [
+                    Value,
+                    ...Value[],
+                ];
+
                 return;
+            }
+            case 'function': {
+                // if (f.length <= trail.length) {
+                const dest = trail[Math.min(trail.length, f.length) - 1];
+                dest.v[0] = 0;
+                dest.v[1] = self ?? (f as Law);
+                dest.v[2] = trail.slice(0, f.length).map((t) => t.arg) as [
+                    Value,
+                    ...Value[],
+                ];
+                console.log('here we are', show(dest.v));
+                // } else {
+                //     console.log(`no need ... less?`)
+                // }
+
+                return;
+            }
             case 'object':
+                if (f[0] === 3) return;
                 if (f[0]) {
                     f = f[1];
                     continue;
@@ -134,7 +164,6 @@ export const maybeCollapse = (target: Body) => {
                     console.warn('ignoring possible further-collapsible thing');
                     return;
                 }
-                maybeCollapse(f[2][0]);
                 trail.unshift({ v: f, arg: f[2][0] });
                 f = f[1];
                 continue;
@@ -146,13 +175,19 @@ export const maybeCollapse = (target: Body) => {
                 dest.v[2] = trail.map((t) => t.arg) as [Value, ...Value[]];
                 return;
         }
+        console.log('and we are come o the end of things', typeof f);
         break;
     }
 };
 
-export const compile = (name: string, arity: number, body: Value) => {
+export const compile = (
+    name: string,
+    arity: number,
+    body: Value,
+    pinArities: Record<string, number>,
+) => {
     if (arity === 0) {
-        return compileValue(toBody(body, 0));
+        return compileValue(toBody(body, 0), pinArities);
     }
     const args: string[] = [];
     for (let i = 1; i <= arity; i++) {
@@ -168,10 +203,11 @@ export const compile = (name: string, arity: number, body: Value) => {
             (value, i) =>
                 `\n    setLocal($${i + arity + 1}, ${compileValue(
                     toBody(value, maxIndex),
+                    pinArities,
                 )});`,
         )
         .join('')}
-    return ${compileValue(toBody(inner, maxIndex))};
+    return ${compileValue(toBody(inner, maxIndex), pinArities)};
 }`;
     const SIMPLE = true;
     if (SIMPLE) {
@@ -193,6 +229,7 @@ const oneVal = (
     val: NVal,
     pins: string[],
     fns: Record<string, string>,
+    pinArities: Record<string, number>,
 ): Value => {
     switch (val.v[0]) {
         case PIN:
@@ -201,18 +238,20 @@ const oneVal = (
             const name =
                 (val.v[1] > 0 ? clean(natToAscii(val.v[1])) + '_' : '') +
                 objectHash(val.v).slice(0, 4);
+            pinArities[name] = Number(val.v[2]);
             fns[name] = compile(
                 name,
                 // natToAscii(val.v[1]),
                 Number(val.v[2]),
-                oneVal(val.v[3], pins, fns),
+                oneVal(val.v[3], pins, fns, pinArities),
+                pinArities,
             );
             return name;
         case APP:
             return [
                 0,
-                oneVal(val.v[1], pins, fns),
-                [oneVal(val.v[2], pins, fns)],
+                oneVal(val.v[1], pins, fns, pinArities),
+                [oneVal(val.v[2], pins, fns, pinArities)],
             ];
         case NAT:
             return val.v[1];
@@ -222,13 +261,22 @@ const oneVal = (
 export const compileVal = (val: Val) => {
     const npins: [NVal, Val][] = [];
     const changed = findPins(val, npins);
+    const pinArities: Record<string, number> = {
+        INC: 1,
+        PCASE: 5,
+        NCASE: 3,
+        LAW: 3,
+        PIN: 1,
+    };
     const pinHashes = npins.map(([nv, v]) => {
         if (nv.v[0] === NAT && OPNAMES[Number(nv.v[1])]) {
             return OPNAMES[Number(nv.v[1])];
         }
         const hash = objectHash(nv);
         if (nv.v[0] === LAW) {
-            return clean(natToAscii(nv.v[1])) + '_' + hash.slice(0, 4);
+            const name = clean(natToAscii(nv.v[1])) + '_' + hash.slice(0, 4);
+            pinArities[name] = Number(nv.v[2]);
+            return name;
         }
         return hash;
     });
@@ -240,16 +288,20 @@ export const compileVal = (val: Val) => {
             toplevel[hash] = compile(
                 hash,
                 Number(nv.v[2]),
-                oneVal(nv.v[3], pinHashes, toplevel),
+                oneVal(nv.v[3], pinHashes, toplevel, pinArities),
+                pinArities,
             );
         } else {
-            toplevel[hash] = compileValue(oneVal(nv, pinHashes, toplevel));
+            toplevel[hash] = compileValue(
+                oneVal(nv, pinHashes, toplevel, pinArities),
+                pinArities,
+            );
         }
     });
 
-    const main = oneVal(changed, pinHashes, toplevel);
+    const main = oneVal(changed, pinHashes, toplevel, pinArities);
 
-    toplevel.main = compileValue(main);
+    toplevel.main = compileValue(main, pinArities);
 
     return toplevel;
 };

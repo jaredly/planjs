@@ -70,7 +70,8 @@ export const show = (v: Value, trail: Value[] = []): string => {
             return `LAW(${natToAscii(v.nameNat)})`;
         case 'object':
             if (v.length === 3) {
-                if (typeof v[1] === 'number' || typeof v[1] === 'bigint') {
+                const first = unlazy(v[1]);
+                if (typeof first === 'number' || typeof first === 'bigint') {
                     const lst: Value[] = [];
                     unwrapList(v, lst);
                     return `[${lst.map((l) => show(l, trail)).join(', ')}]`;

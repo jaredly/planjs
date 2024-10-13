@@ -23,11 +23,8 @@ test('add', () => {
 test('map', () => {
     const main = getMain(`
 (defn + [a b] (NCASE b (fn [a] (INC (+ a b))) a))
-(defn ! [v _] v)
-(defn !! [v _ _] v)
-(defn !!! [v _ _ _] v)
-(defn !!!! [v _ _ _ _] v)
-(defn map [f lst] (PCASE (! 0) (!!! 0) (fn [head tail] ((f head) (map f tail))) (fn [x] (f x)) lst))
+(defn map_ [map f head tail] ((f head) (map f tail)))
+(defn map [f lst] (PCASE 0 0 (map_ map f) f lst))
 
 (defn main [x] (map (+ x) [1 2 3 4]))
         `);

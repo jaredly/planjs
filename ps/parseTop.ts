@@ -2,26 +2,27 @@ import { asciiToNat } from '../runtime/natToAscii';
 import { Val, OPS, PIN, LAW, APP, NAT, APPS } from '../runtime/types';
 import { readTop } from './readTop';
 
-export type Sexp = string | Sexp[];
+export type Sexp = string | { kind: '(' | '[' | '{'; items: Sexp[] };
 // export type Top = {
 //     type: 'def',
 //     name: string,
 // }
 // export const named: Record<string, Val> = {};
 
-export const parseTop = (top: Sexp, named: Record<string, Val>) => {
-    if (typeof top === 'string') {
-        return parse(top, null, named);
+export const parseTop = (value: Sexp, named: Record<string, Val>) => {
+    if (typeof value === 'string') {
+        return parse(value, null, named);
     }
+    const top = value.items;
     if (
         top.length === 4 &&
         top[0] === 'defn' &&
         typeof top[1] === 'string' &&
-        Array.isArray(top[2])
+        typeof top[2] === 'object'
     ) {
         // console.log('def', top[1]);
         const args: string[] = [top[1]];
-        top[2].forEach((item) => {
+        top[2].items.forEach((item) => {
             if (typeof item === 'string') {
                 args.push(item);
             } else {
@@ -38,7 +39,14 @@ export const parseTop = (top: Sexp, named: Record<string, Val>) => {
         named[top[1]] = {
             v: [
                 PIN,
-                { v: [LAW, asciiToNat(top[1]), BigInt(top[2].length), body] },
+                {
+                    v: [
+                        LAW,
+                        asciiToNat(top[1]),
+                        BigInt(top[2].items.length),
+                        body,
+                    ],
+                },
             ],
         };
         return;
@@ -64,19 +72,20 @@ export const parseTop = (top: Sexp, named: Record<string, Val>) => {
         };
         return;
     }
-    throw new Error(`canot parse top ${JSON.stringify(top)}`);
+    throw new Error(`canot parse top ${JSON.stringify(value)}`);
 };
 
-export const free = (v: Sexp, scope: string[], vbls: string[]) => {
-    if (typeof v === 'string') {
-        if (!scope.includes(v) && !vbls.includes(v)) {
-            vbls.push(v);
+export const free = (value: Sexp, scope: string[], vbls: string[]) => {
+    if (typeof value === 'string') {
+        if (!scope.includes(value) && !vbls.includes(value)) {
+            vbls.push(value);
         }
         return;
     }
-    if (v[0] === 'fn' && Array.isArray(v[1])) {
+    const v = value.items;
+    if (v[0] === 'fn' && typeof v[1] === 'object' && v[1].kind === '[') {
         scope = scope.slice();
-        v[1].forEach((n) => {
+        v[1].items.forEach((n) => {
             if (typeof n === 'string') {
                 scope.push(n);
             }
@@ -84,9 +93,14 @@ export const free = (v: Sexp, scope: string[], vbls: string[]) => {
         free(v[2], scope, vbls);
         return;
     }
-    if (v[0] === 'let' && v.length === 3 && Array.isArray(v[1])) {
-        for (let i = 0; i < v[1].length; i += 2) {
-            const name = v[1][i];
+    if (
+        v[0] === 'let' &&
+        v.length === 3 &&
+        typeof v[1] === 'object' &&
+        v[1].kind === '['
+    ) {
+        for (let i = 0; i < v[1].items.length; i += 2) {
+            const name = v[1].items[i];
             if (typeof name === 'string') {
                 scope.push(name);
             }
@@ -149,10 +163,15 @@ const parse = (
         throw new Error(`undefined ref ${item}`);
     }
 
-    if (item[0] === 'let' && item.length === 3 && Array.isArray(item[1])) {
+    const { items } = item;
+    if (
+        items[0] === 'let' &&
+        items.length === 3 &&
+        typeof items[1] === 'object'
+    ) {
         if (!parent) throw new Error(`can't have a let outside of a law`);
-        let bindings = item[1].slice();
-        let body = item[2];
+        let bindings = items[1].items.slice();
+        let body = items[2];
         const next = (): Val => {
             if (bindings.length < 2) {
                 if (bindings.length === 1) {
@@ -179,19 +198,23 @@ const parse = (
         return next();
     }
 
-    if (item[0] === 'fn' && Array.isArray(item[1])) {
+    if (
+        items[0] === 'fn' &&
+        typeof items[1] === 'object' &&
+        items[1].kind === '['
+    ) {
         const innerArgs: string[] = ['-self-'];
-        item[1].forEach((item) => {
-            if (typeof item === 'string') {
-                innerArgs.push(item);
+        items[1].items.forEach((items) => {
+            if (typeof items === 'string') {
+                innerArgs.push(items);
             } else {
                 throw new Error(`arg must be string`);
             }
         });
-        let ln = item[1].length;
+        let ln = items[1].items.length;
         if (!parent) {
             const body = parse(
-                item[2],
+                items[2],
                 {
                     args: innerArgs,
                     name: 'anon',
@@ -202,11 +225,11 @@ const parse = (
             return { v: [LAW, asciiToNat('anon'), BigInt(ln), body] };
         }
         let needed: string[] = [];
-        free(item[2], innerArgs, needed);
+        free(items[2], innerArgs, needed);
         needed = needed.filter(
             (n) => parent.args.includes(n) && !named[n] && !OPS[n as 'LAW'],
         );
-        // console.log('needed', needed); //, item[2]);
+        // console.log('needed', needed); //, items[2]);
         if (needed.length) {
             innerArgs.splice(1, 0, ...needed);
             ln += needed.length;
@@ -215,7 +238,7 @@ const parse = (
         parent.lcount += 1;
         const name = parent.name + parent.lcount;
         const body = parse(
-            item[2],
+            items[2],
             {
                 args: innerArgs,
                 name,
@@ -237,12 +260,31 @@ const parse = (
         return law;
     }
 
-    const first = parse(item[0], parent, named);
+    if (item.kind === '[') {
+        return makeList(
+            parent != null,
+            ...items.map((item) => parse(item, parent, named)),
+        );
+    }
+
     return lapps(
         parent != null,
-        first,
-        ...item.slice(1).map((item) => parse(item, parent, named)),
+        ...items.map((item) => parse(item, parent, named)),
     );
+};
+
+const makeList = (inLaw: boolean, ...items: Val[]): Val => {
+    let res = items[items.length - 1];
+    for (let i = items.length - 2; i >= 0; i--) {
+        if (inLaw) {
+            res = {
+                v: [APP, { v: [APP, { v: [NAT, 0n] }, items[i]] }, res],
+            };
+        } else {
+            res = { v: [APP, items[i], res] };
+        }
+    }
+    return res;
 };
 
 export const getMain = (text: string) => {

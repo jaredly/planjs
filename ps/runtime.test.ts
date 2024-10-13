@@ -29,7 +29,7 @@ test('map', () => {
 (defn !!!! [v _ _ _ _] v)
 (defn map [f lst] (PCASE (! 0) (!!! 0) (fn [head tail] ((f head) (map f tail))) (fn [x] (f x)) lst))
 
-(defn main [x] (map (+ x) (1 (2 (3 4)))))
+(defn main [x] (map (+ x) [1 2 3 4]))
         `);
     const res = jsjit.run(APPS(main, { v: [NAT, 10n] }));
     expect(res).toEqual('[11, 12, 13, 14]');

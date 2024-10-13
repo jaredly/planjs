@@ -18,7 +18,8 @@ const read = (text: string, i: number, dest: Sexp[]): number => {
         i += n;
     }
     if (text[i] === '(' || text[i] === '[' || text[i] === '{') {
-        const look = pair[text[i] as '['];
+        const first = text[i] as '[';
+        const look = pair[first];
         i++;
         const items: Sexp[] = [];
         while (text[i] !== look && i < text.length) {
@@ -26,7 +27,7 @@ const read = (text: string, i: number, dest: Sexp[]): number => {
             i = skip(text, i);
         }
         i++;
-        dest.push(items);
+        dest.push({ items, kind: first });
         return i;
     }
     i = skip(text, i);

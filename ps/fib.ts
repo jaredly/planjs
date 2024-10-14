@@ -1,5 +1,13 @@
 import { asciiToNat, natToAscii } from '../runtime/natToAscii';
-import { APP, APPS, force, pin, pinLaw, show, Value as V } from './runtime';
+import {
+    APP,
+    APPS,
+    force,
+    pin,
+    pinLaw,
+    show,
+    Value as V,
+} from './normal/runtime';
 
 pinLaw((x: V, p: V, l: V, a: V, n: V) => APPS('PCASE', p, l, a, n, x), 'pcase');
 pinLaw((x: V, z: V, p: V) => APPS('NCASE', z, p, x), 'ncase');

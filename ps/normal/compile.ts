@@ -1,6 +1,6 @@
 import objectHash from 'object-hash';
-import { findPins, NVal } from '../runtime/arraybuffer';
-import { APP, LAW, NAT, OPNAMES, PIN, Val } from '../runtime/types';
+import { findPins, NVal } from '../../runtime/arraybuffer';
+import { APP, LAW, NAT, OPNAMES, PIN, Val } from '../../runtime/types';
 import {
     asLaw,
     force,
@@ -13,14 +13,12 @@ import {
     show,
     Value,
 } from './runtime';
-import { asciiToNat, natToAscii } from '../runtime/natToAscii';
-import { RT } from '../runtime/runtime2';
+import { asciiToNat, natToAscii } from '../../runtime/natToAscii';
+import { RT } from '../../runtime/runtime2';
 import { writeFileSync } from 'fs';
 
 const asApp = (v: Value): null | [Value, Value] =>
-    typeof v === 'object' && v.length === 3 && v[2].length === 1
-        ? [v[1], v[2][0]]
-        : null;
+    typeof v === 'object' && v.length === 3 ? [v[1], v[2]] : null;
 
 // NOTE: Not forcing anything here
 // looks like I don't in runtime2 either
@@ -55,14 +53,12 @@ const compileValue = (
                 if (value[1] === 0) return 'this';
                 return `$${value[1]}`;
             }
-            maybeCollapse(value, pinArities);
+            // maybeCollapse(value, pinArities);
             if (value.length === 3) {
                 return `[${value[0]}, ${compileValue(
                     value[1],
                     pinArities,
-                )}, [${value[2]
-                    .map((v) => compileValue(v, pinArities))
-                    .join(', ')}]]`;
+                )}, ${compileValue(value[2], pinArities)}]`;
             }
             return compileValue(value[1], pinArities);
     }
@@ -72,7 +68,7 @@ const compileValue = (
 // export type Value = Immediate | Lazy;
 // type Immediate = Law | number | bigint | string;
 // export type Law = Function & { nameNat: bigint; body: Value };
-type BLazy = [0 | 1, Body, [Body, ...Body[]]] | [1, Immediate];
+type BLazy = [0 | 1, Body, Body] | [1, Immediate];
 type Body = Immediate | BLazy | [3, number]; /* (ref int) */
 
 const toBody = (value: Value, maxIndex: number): Body => {
@@ -92,93 +88,93 @@ const toBody = (value: Value, maxIndex: number): Body => {
                 return [
                     0,
                     toBody(inner[1], maxIndex),
-                    [toBody(pair[1], maxIndex)],
+                    toBody(pair[1], maxIndex),
                 ];
             }
     }
     return value;
 };
 
-// hrmmmmm ok so this needs to happen /after/ translating a BODY to ~normal code.
-// which means, we want a BODYAST that we can work on, that shares some similarities
-// to the normal AST.
-export const maybeCollapse = (
-    target: Body,
-    pinArities: Record<string, number>,
-) => {
-    if (1 || typeof target !== 'object' || target[0] || target[2].length > 1)
-        return;
-    console.log('consider', show(target));
-    const trail: { v: BLazy; arg: Body }[] = [];
-    let f: Body | Function = target;
-    let self: null | Body = null;
-    while (true) {
-        console.log(`at`, f);
-        switch (typeof f) {
-            case 'string': {
-                // let inner: Value | Function = PINS[f];
-                // if (!inner) throw new Error(`unknown pinnn ${f}`);
-                // if (inner === 0 || inner === 0n) inner = OP_FNS.LAW;
-                // if (inner === 1 || inner === 1n) inner = OP_FNS.PCASE;
-                // if (inner === 2 || inner === 2n) inner = OP_FNS.NCASE;
-                // if (inner === 3 || inner === 3n) inner = OP_FNS.INC;
-                // if (inner === 4 || inner === 4n) inner = OP_FNS.PIN;
-                // self = f;
-                // f = inner;
-                const arity = pinArities[f];
-                if (!arity) throw new Error(`unknown pin ${f}`);
+// // hrmmmmm ok so this needs to happen /after/ translating a BODY to ~normal code.
+// // which means, we want a BODYAST that we can work on, that shares some similarities
+// // to the normal AST.
+// export const maybeCollapse = (
+//     target: Body,
+//     pinArities: Record<string, number>,
+// ) => {
+//     if (1 || typeof target !== 'object' || target[0])
+//         return;
+//     console.log('consider', show(target));
+//     const trail: { v: BLazy; arg: Body }[] = [];
+//     let f: Body | Function = target;
+//     let self: null | Body = null;
+//     while (true) {
+//         console.log(`at`, f);
+//         switch (typeof f) {
+//             case 'string': {
+//                 // let inner: Value | Function = PINS[f];
+//                 // if (!inner) throw new Error(`unknown pinnn ${f}`);
+//                 // if (inner === 0 || inner === 0n) inner = OP_FNS.LAW;
+//                 // if (inner === 1 || inner === 1n) inner = OP_FNS.PCASE;
+//                 // if (inner === 2 || inner === 2n) inner = OP_FNS.NCASE;
+//                 // if (inner === 3 || inner === 3n) inner = OP_FNS.INC;
+//                 // if (inner === 4 || inner === 4n) inner = OP_FNS.PIN;
+//                 // self = f;
+//                 // f = inner;
+//                 const arity = pinArities[f];
+//                 if (!arity) throw new Error(`unknown pin ${f}`);
 
-                const dest = trail[Math.min(trail.length, arity) - 1];
-                dest.v[0] = 0;
-                dest.v[1] = f;
-                dest.v[2] = trail.slice(0, arity).map((t) => t.arg) as [
-                    Value,
-                    ...Value[],
-                ];
+//                 const dest = trail[Math.min(trail.length, arity) - 1];
+//                 dest.v[0] = 0;
+//                 dest.v[1] = f;
+//                 dest.v[2] = trail.slice(0, arity).map((t) => t.arg) as [
+//                     Value,
+//                     ...Value[],
+//                 ];
 
-                return;
-            }
-            case 'function': {
-                // if (f.length <= trail.length) {
-                const dest = trail[Math.min(trail.length, f.length) - 1];
-                dest.v[0] = 0;
-                dest.v[1] = self ?? (f as Law);
-                dest.v[2] = trail.slice(0, f.length).map((t) => t.arg) as [
-                    Value,
-                    ...Value[],
-                ];
-                console.log('here we are', show(dest.v));
-                // } else {
-                //     console.log(`no need ... less?`)
-                // }
+//                 return;
+//             }
+//             case 'function': {
+//                 // if (f.length <= trail.length) {
+//                 const dest = trail[Math.min(trail.length, f.length) - 1];
+//                 dest.v[0] = 0;
+//                 dest.v[1] = self ?? (f as Law);
+//                 dest.v[2] = trail.slice(0, f.length).map((t) => t.arg) as [
+//                     Value,
+//                     ...Value[],
+//                 ];
+//                 console.log('here we are', show(dest.v));
+//                 // } else {
+//                 //     console.log(`no need ... less?`)
+//                 // }
 
-                return;
-            }
-            case 'object':
-                if (f[0] === 3) return;
-                if (f[0]) {
-                    f = f[1];
-                    continue;
-                }
-                if (f[2].length > 1) {
-                    console.warn('ignoring possible further-collapsible thing');
-                    return;
-                }
-                trail.unshift({ v: f, arg: f[2][0] });
-                f = f[1];
-                continue;
-            case 'number':
-            case 'bigint':
-                const dest = trail[trail.length - 1];
-                dest.v[0] = 0;
-                dest.v[1] = f;
-                dest.v[2] = trail.map((t) => t.arg) as [Value, ...Value[]];
-                return;
-        }
-        console.log('and we are come o the end of things', typeof f);
-        break;
-    }
-};
+//                 return;
+//             }
+//             case 'object':
+//                 if (f[0] === 3) return;
+//                 if (f[0]) {
+//                     f = f[1];
+//                     continue;
+//                 }
+//                 if (f[2].length > 1) {
+//                     console.warn('ignoring possible further-collapsible thing');
+//                     return;
+//                 }
+//                 trail.unshift({ v: f, arg: f[2][0] });
+//                 f = f[1];
+//                 continue;
+//             case 'number':
+//             case 'bigint':
+//                 const dest = trail[trail.length - 1];
+//                 dest.v[0] = 0;
+//                 dest.v[1] = f;
+//                 dest.v[2] = trail.map((t) => t.arg) as [Value, ...Value[]];
+//                 return;
+//         }
+//         console.log('and we are come o the end of things', typeof f);
+//         break;
+//     }
+// };
 
 export const compile = (
     name: string,
@@ -241,7 +237,6 @@ const oneVal = (
             pinArities[name] = Number(val.v[2]);
             fns[name] = compile(
                 name,
-                // natToAscii(val.v[1]),
                 Number(val.v[2]),
                 oneVal(val.v[3], pins, fns, pinArities),
                 pinArities,
@@ -251,7 +246,7 @@ const oneVal = (
             return [
                 0,
                 oneVal(val.v[1], pins, fns, pinArities),
-                [oneVal(val.v[2], pins, fns, pinArities)],
+                oneVal(val.v[2], pins, fns, pinArities),
             ];
         case NAT:
             return val.v[1];

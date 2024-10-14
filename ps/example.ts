@@ -1,5 +1,5 @@
 import { asciiToNat, natToAscii } from '../runtime/natToAscii';
-import { APP, APPS, force, pinLaw, show, Value } from './runtime';
+import { APP, APPS, force, pinLaw, show, Value } from './normal/runtime';
 
 pinLaw(function $plus1(a: Value, b: Value, c: Value) {
     return APP('INC', APPS(a, b, c));

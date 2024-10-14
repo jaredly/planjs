@@ -8,15 +8,10 @@ N number | bigint
 import { asciiToNat, natToAscii } from '../runtime/natToAscii';
 import { perf } from '../runtime/perf';
 
-// type App = [Value, Value];
-
-// Invariant:
-// An app is either [NotAnApp, maybe_multiple_values]
-// OR [Value, [one_single_value]]
+export type Law = Function & { nameNat: bigint; body: Value };
+type Immediate = Law | number | bigint | string;
 type Lazy = [0 | 1, Value, [Value, ...Value[]]] | [1, Immediate]; // { lazy: Immediate | App; forced: boolean };
 export type Value = Immediate | Lazy;
-export type Immediate = Law | number | bigint | string;
-export type Law = Function & { nameNat: bigint; body: Value };
 
 export const PINS: Record<string, Value> = {
     LAW: 0,
@@ -36,33 +31,23 @@ export const pinLaw = (f: Function, name = f.name) => {
     PINS[name] = l;
 };
 
-const unlazy = (v: Body) => {
-    if (typeof v === 'object' && v.length === 2 && v[0] === 1)
-        return unlazy(v[1]);
-    return v;
-};
-
-const unwrapList = (v: Body, lst: Body[]) => {
-    if (typeof v === 'object' && v.length === 3) {
-        const first = unlazy(v[1]);
-        if (typeof first === 'number' || typeof first === 'bigint') {
-            lst.push(first);
-            if (v[2].length > 1) {
-                lst.push(...v[2]);
-            } else {
-                unwrapList(v[2][0], lst);
-            }
-            return;
-        }
+const unwrapList = (v: Value, lst: Value[]) => {
+    if (
+        typeof v === 'object' &&
+        v.length === 3 &&
+        (typeof v[1] === 'number' || typeof v[1] === 'bigint') &&
+        v[2].length === 1
+    ) {
+        lst.push(v[1]);
+        unwrapList(v[2][0], lst);
+    } else {
+        lst.push(v);
     }
-    lst.push(v);
 };
 
-export type BLazy = [0 | 1, Body, [Body, ...Body[]]] | [1, Immediate];
-export type Body = Immediate | BLazy | [3, number]; /* (ref int) */
-
-export const show = (v: Body, trail: Body[] = []): string => {
+export const show = (v: Value, trail: Value[] = []): string => {
     if (trail.includes(v)) return 'recurse';
+    const otrail = trail;
     trail = [...trail, v];
     switch (typeof v) {
         case 'number':
@@ -74,15 +59,14 @@ export const show = (v: Body, trail: Body[] = []): string => {
             return `LAW(${natToAscii(v.nameNat)})`;
         case 'object':
             if (v.length === 3) {
-                const first = unlazy(v[1]);
-                if (typeof first === 'number' || typeof first === 'bigint') {
-                    const lst: Value[] = [];
-                    unwrapList(v, lst);
-                    return `[${lst.map((l) => show(l, trail)).join(', ')}]`;
-                }
-                return `APP(${show(v[1], trail)} ${v[2].map((v) =>
-                    show(v, trail),
-                )})`;
+                // if (typeof v[1] === 'number' || typeof v[1] === 'bigint') {
+                //     const lst: Value[] = [];
+                //     unwrapList(v, lst);
+                //     return `[${lst.map((l) => show(l, trail)).join(', ')}]`;
+                // }
+                return `APP(${show(v[1], trail)} ${v[2]
+                    .map((v) => show(v, trail))
+                    .join(' ')})`;
                 // return `aAPP`;
             }
             return show(v[1], trail);
@@ -94,6 +78,7 @@ export const forceDeep = (v: Value): Value => {
     if (Array.isArray(v) && v.length === 3) {
         forceDeep(v[1]);
         v[2].forEach(forceDeep);
+        // forceDeep(v[2]);
     }
     return v;
 };
@@ -146,11 +131,106 @@ const setLazy = (v: Lazy, n: Value) => {
     }
 };
 
+const maybeCollapse = (target: Value) => {
+    if (typeof target !== 'object' || target[0] || target[2].length > 1) return;
+    const trail: { v: Lazy; arg: Value }[] = [{ v: target, arg: target[2][0] }];
+    let f: Value | Function = target[1];
+    let self: null | Value = null;
+    while (true) {
+        switch (typeof f) {
+            case 'string':
+                let inner: Value | Function = PINS[f];
+                if (inner === 0 || inner === 0n) inner = LAW;
+                if (inner === 1 || inner === 1n) inner = PCASE;
+                if (inner === 2 || inner === 2n) inner = NCASE;
+                if (inner === 3 || inner === 3n) inner = INC;
+                if (inner === 4 || inner === 4n) inner = PIN;
+                self = f;
+                f = inner;
+                continue;
+            case 'function':
+                if (f.length <= trail.length) {
+                    const dest = trail[f.length - 1];
+                    dest.v[0] = 0;
+                    dest.v[1] = self ?? (f as Law);
+                    dest.v[2] = trail.slice(0, f.length).map((t) => t.arg) as [
+                        Value,
+                        ...Value[],
+                    ];
+                }
+                return;
+            case 'object':
+                if (f[0]) {
+                    f = f[1];
+                    continue;
+                }
+                if (f[2].length > 1) {
+                    console.warn('ignoring possible further-collapsible thing');
+                    return;
+                }
+                trail.unshift({ v: f, arg: f[2][0] });
+                f = f[1];
+                continue;
+            case 'number':
+            case 'bigint':
+                const dest = trail[trail.length - 1];
+                dest.v[0] = 0;
+                dest.v[1] = f;
+                dest.v[2] = trail.map((t) => t.arg) as [Value, ...Value[]];
+                break;
+        }
+        break;
+    }
+};
+
+const getFunction = (target: Value): Function | null => {
+    switch (typeof target) {
+        case 'function':
+            return target;
+        case 'string':
+            const inner = PINS[target];
+            if (inner === 0 || inner === 0n) return LAW;
+            if (inner === 1 || inner === 1n) return PCASE;
+            if (inner === 2 || inner === 2n) return NCASE;
+            if (inner === 3 || inner === 3n) return INC;
+            if (inner === 4 || inner === 4n) return PIN;
+            return getFunction(inner);
+        case 'object':
+            if (target.length === 2) {
+                return getFunction(target[1]);
+            }
+            throw new Error(
+                `invalid app coalescing, a multi-arg APP must be the innermost.`,
+            );
+    }
+    return null;
+};
+
 const forceApp = (v: Value) => {
     if (typeof v !== 'object' || v[0]) return;
     v[0] = 1;
-    const trail: { v: Lazy; arg: Value }[] = [];
-    let f: Value | Function = v;
+    // if there are multiple args, the target must be
+    // a function, or uncallable.
+    if (v[2].length > 1) {
+        const args = v[2];
+        const target = getFunction(v[1]);
+        if (!target) return; // not applyable
+        if (target.length < args.length) {
+            throw new Error(
+                `Invalid coalescing of APPs; a function's arity is less than the associated args.`,
+            );
+        }
+        if (target.length > args.length) {
+            return; // done here
+        }
+        const result = target.apply(target, args);
+        v[0] = 0;
+        setLazy(v, result);
+        return;
+    }
+
+    const trail: { v: Lazy; arg: Value }[] = [{ v, arg: v[2][0] }];
+    let f: Value | Function = v[1];
     let self: null | Value = null;
     while (true) {
         switch (typeof f) {
@@ -161,7 +241,7 @@ const forceApp = (v: Value) => {
                 }
                 const dest = trail[f.length - 1];
                 const args = trail.splice(0, f.length).map((a) => a.arg);
-                const result: Value = f.apply(self ?? f, args);
+                const result = f.apply(self ?? f, args);
                 if (!trail.length) {
                     v[0] = 0;
                 }
@@ -205,7 +285,30 @@ const forceApp = (v: Value) => {
             case 'object': {
                 if (f.length === 3) {
                     if (f[2].length > 1) {
-                        throw new Error('not yet padawan');
+                        const args = f[2];
+                        const target = getFunction(f[1]);
+                        if (!target) return;
+                        if (target.length < args.length) {
+                            throw new Error(
+                                `Invalid coalescing of APPs; a function's arity is less than the associated args.`,
+                            );
+                        }
+                        const dest = trail[target.length - args.length];
+                        const total = args.concat(trail.map((t) => t.arg));
+                        if (target.length > total.length) {
+                            return; // done here
+                        }
+                        const result = target.apply(
+                            target,
+                            total.slice(0, target.length),
+                        );
+                        if (trail.length === 0) {
+                            v[0] = 0;
+                        }
+                        setLazy(dest.v, result);
+
+                        f = result;
+                        continue;
                     }
                     trail.unshift({ v: f, arg: f[2][0] });
                     f = f[1];
@@ -307,10 +410,14 @@ const PCASE = (p: Value, l: Value, a: Value, n: Value, x: Value) => {
             `force didnt work? shouldnt return a lazy with a non-app`,
         );
     }
-    // if (x[2].length > 1) {
-    //     return APPS(a, [0, x[1], x[2].slice(0, -1)], x[2][x[2].length - 1]);
-    // }
-    return APPS(a, x[1], x[2][0]);
+    if (x[2].length === 1) {
+        return APPS(a, x[1], x[2][0]);
+    }
+    return APPS(
+        a,
+        [0, x[1], x[2].slice(0, -1) as [Value, ...Value[]]],
+        x[2][x[2].length - 1],
+    );
 };
 
 export const asLaw = (f: Function, name: bigint, body: Value): Law => {
@@ -319,5 +426,3 @@ export const asLaw = (f: Function, name: bigint, body: Value): Law => {
     l.body = body;
     return l;
 };
-
-export const OP_FNS = { PCASE, LAW, PIN, INC, NCASE };

@@ -7,9 +7,12 @@
 # Optimizing the JIT compiler:
 
 - [ ] if we're calling a LAW, we can eliminate a bunch of unnecessary APPs because we know the (minimum) arity
+  - eh, ok I'm not actually sold on this I guess.
 - [ ] let's try inlining stuff! What does that do?
 - [ ] sooo it turns out the jitted code is only really responsible for producing a data structure that gets pushed onto the stack. seems like we want a VM anyways
 - [ ] areee there some functions that we can through fancy analysis turn into strict? Thus allowing them to be much more effectively JITted? Like, you could inline a PCASE as a switch or something...
+
+lol for the editor, can I rope in my dealio?
 
 
 # OK so something muuch simpler ought to be:

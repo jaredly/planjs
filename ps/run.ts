@@ -7,7 +7,7 @@ import { APPS } from '../runtime/types';
 import { NAT, Val } from '../runtime/types';
 import { parse as parseNice, showNice } from '../pst';
 import { perfMap, reportPerf, showPerf, trackPerf } from '../runtime/perf';
-import { jsjit } from './compile';
+import { jsjit } from './normal/compile';
 import { parseTop, getMain } from './parseTop';
 
 const usage = `run.ts [opts] fname ...args

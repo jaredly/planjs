@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'fs';
 import { APPS, NAT } from '../runtime/types';
-import { jsjit } from './compile';
+import { jsjit } from './normal/compile';
 import { getMain } from './parseTop';
 
 test('simple', () => {

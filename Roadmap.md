@@ -2,6 +2,7 @@
 # Let's recover variable names?
 
 - [ ] yeah hang on to variable names in PLAN so I can re-render them back
+  - while we're at it, let's hang on to `loc`s
 - [ ] sort the pins based on usage, dependency order prolly
 - [ ] change my `let` syntax to be `(let name value) (let name value)`
 - [ ] think about .. step-through ..?

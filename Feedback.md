@@ -9,6 +9,7 @@ How married are you to the term "Cog"? It doesn't really evoke anything for me.
 - can you imagine pallas being used to make games? the "tcp/udp only" constraint will put a pretty hard cap on that.
   - unless you imagine pallas to be runnable in a variety of contexts, only one of which is the "cog machine"
 
+- for REX, they said all runes can be prefix or infix, but it doesn't look like that's the case for `&`...
 
 
 ## ~~nevermind this stuff~~

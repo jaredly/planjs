@@ -160,7 +160,9 @@ const parse = (
         if (OPS[item as 'LAW']) {
             return { v: [PIN, { v: [NAT, BigInt(OPS[item as 'LAW'])] }] };
         }
-        throw new Error(`undefined ref ${item}`);
+        throw new Error(
+            `undefined ref ${item} while parsing ${JSON.stringify(parent)}`,
+        );
     }
 
     const { items } = item;

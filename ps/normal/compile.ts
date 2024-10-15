@@ -325,7 +325,7 @@ export const jsjit: RT = {
             setLocal,
         });
 
-        PINS['$pl_1255'] = asLaw(
+        PINS['$pl_5dd6'] = PINS['$pl_1255'] = asLaw(
             (a: Value, b: Value) => {
                 a = force(a);
                 b = force(b);
@@ -339,6 +339,7 @@ export const jsjit: RT = {
             0,
         );
 
+        console.log(code);
         console.log(PINS.main);
         console.log(show(PINS.main));
         return show(forceDeep(PINS.main));

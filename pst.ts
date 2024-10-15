@@ -43,7 +43,7 @@ const show = (v: AST, pins: Pins): string => {
                 return `(def ${v.name} ${show(v.body, pins)})`;
             return `(${v.name ? 'defn ' + v.name + ' ' : 'fn '}[${args.join(
                 ' ',
-            )}] ${show(v.body, pins)})`;
+            )}]\n    ${show(v.body, pins)})`;
         }
         case 'let':
             return `let ?? = ${show(v.value, pins)} in ${show(v.body, pins)}`;
@@ -61,6 +61,24 @@ const show = (v: AST, pins: Pins): string => {
         case 'ref':
             return `<?? unevaluated ref ??>`;
     }
+};
+
+export const plainBody = ({ v: val }: Val): Val => {
+    if (val[0] === APP) {
+        const [_, f1, arg1] = val;
+        if (f1.v[0] === APP) {
+            const [_, f2, arg2] = f1.v;
+            if (f2.v[0] === NAT) {
+                if (f2.v[1] === 0n) {
+                    return { v: [APP, plainBody(arg2), plainBody(arg1)] };
+                }
+            }
+        }
+        if (f1.v[0] === NAT && f1.v[1] === 2n) {
+            return arg1;
+        }
+    }
+    return { v: val };
 };
 
 const parseBody = (v: Val, trace: Val[], pins: Pins): AST => {
@@ -179,7 +197,7 @@ export const showNice = (val: Val | string, debug = false) => {
         pins
             .map(
                 (p, i) =>
-                    `PIN ${i}: ${show(p.ast, pins)}` +
+                    `${show(p.ast, pins)}` +
                     (debug
                         ? `\n${showVal(p.val, {
                               hidePinLaw: true,

@@ -2,9 +2,11 @@
 # Let's recover variable names?
 
 - [ ] yeah hang on to variable names in PLAN so I can re-render them back
+- [ ] sort the pins based on usage, dependency order prolly
 - [ ] change my `let` syntax to be `(let name value) (let name value)`
 - [ ] think about .. step-through ..?
 - [ ] tracing is probably easier...
+- [x] get things lookin nice
 
 # Let's make a web UI
 

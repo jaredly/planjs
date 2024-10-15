@@ -1,4 +1,11 @@
 
+# Let's recover variable names?
+
+- [ ] yeah hang on to variable names in PLAN so I can re-render them back
+- [ ] change my `let` syntax to be `(let name value) (let name value)`
+- [ ] think about .. step-through ..?
+- [ ] tracing is probably easier...
+
 # Let's make a web UI
 
 aanddddd track prevenance

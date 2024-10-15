@@ -223,7 +223,8 @@ const clean = (name: string) =>
 
 export type Ctx = {
     pins: string[];
-    processLaw: (name: string, arity: number, value: Value) => void;
+    processLaw(name: string, arity: number, value: Value): void;
+    nameFn(name: string | null, hash: string): string;
 };
 
 export const oneVal = (val: NVal, ctx: Ctx): Value => {
@@ -231,9 +232,10 @@ export const oneVal = (val: NVal, ctx: Ctx): Value => {
         case PIN:
             return ctx.pins[val.v[1]];
         case LAW:
-            const name =
-                (val.v[1] > 0 ? clean(natToAscii(val.v[1])) + '_' : '') +
-                objectHash(val.v).slice(0, 4);
+            const name = ctx.nameFn(
+                val.v[1] > 0 ? natToAscii(val.v[1]) : null,
+                objectHash(val.v),
+            );
             ctx.processLaw(name, Number(val.v[2]), oneVal(val.v[3], ctx));
             return name;
         case APP:
@@ -243,7 +245,10 @@ export const oneVal = (val: NVal, ctx: Ctx): Value => {
     }
 };
 
-export const preparePins = (val: Val) => {
+export const preparePins = (
+    val: Val,
+    nameFn: (name: string, hash: string) => string,
+) => {
     const npins: [NVal, Val][] = [];
     const changed = findPins(val, npins);
     const pinArities: Record<string, number> = {
@@ -259,7 +264,7 @@ export const preparePins = (val: Val) => {
         }
         const hash = objectHash(nv);
         if (nv.v[0] === LAW) {
-            const name = clean(natToAscii(nv.v[1])) + '_' + hash.slice(0, 4);
+            const name = nameFn(natToAscii(nv.v[1]), hash);
             pinArities[name] = Number(nv.v[2]);
             return name;
         }
@@ -274,8 +279,12 @@ export const preparePins = (val: Val) => {
     };
 };
 
+const nameFn = (name: string, hash: string) => {
+    return (name ? clean(name) + '_' : '') + hash.slice(0, 4);
+};
+
 export const compileVal = (val: Val) => {
-    const { pins, pinHashes, pinArities, root } = preparePins(val);
+    const { pins, pinHashes, pinArities, root } = preparePins(val, nameFn);
 
     const toplevel: Record<string, string> = {};
     const ctx: Ctx = {
@@ -284,6 +293,7 @@ export const compileVal = (val: Val) => {
             pinArities[name] = Number(arity);
             toplevel[name] = compile(name, arity, value, pinArities);
         },
+        nameFn,
     };
     pins.forEach((nv, i) => {
         const hash = pinHashes[i];
@@ -330,23 +340,28 @@ export const jsjit: RT = {
             setLocal,
         });
 
-        PINS['$pl_5dd6'] = PINS['$pl_1255'] = asLaw(
-            (a: Value, b: Value) => {
-                a = force(a);
-                b = force(b);
-                if (typeof a !== 'bigint' && typeof a !== 'number') return 0;
-                if (typeof b !== 'bigint' && typeof b !== 'number') return 0;
-                if (typeof a === 'number' && typeof b === 'number')
-                    return a + b;
-                return BigInt(a) + BigInt(b);
-            },
-            0n,
-            0,
-        );
+        PINS['$pl_ff0f'] =
+            PINS['$pl_5dd6'] =
+            PINS['$pl_1255'] =
+                asLaw(
+                    (a: Value, b: Value) => {
+                        a = force(a);
+                        b = force(b);
+                        if (typeof a !== 'bigint' && typeof a !== 'number')
+                            return 0;
+                        if (typeof b !== 'bigint' && typeof b !== 'number')
+                            return 0;
+                        if (typeof a === 'number' && typeof b === 'number')
+                            return a + b;
+                        return BigInt(a) + BigInt(b);
+                    },
+                    0n,
+                    0,
+                );
 
-        console.log(code);
-        console.log(PINS.main);
-        console.log(show(PINS.main));
+        // console.log(code);
+        // console.log(PINS.main);
+        // console.log(show(PINS.main));
         return show(forceDeep(PINS.main));
     },
 };

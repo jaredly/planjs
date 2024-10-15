@@ -23,7 +23,9 @@ const read = (text: string, i: number, dest: Sexp[]): number => {
         i++;
         const items: Sexp[] = [];
         while (text[i] !== look && i < text.length) {
-            i = read(text, i, items);
+            const ni = read(text, i, items);
+            if (i === ni) throw new Error('no motio');
+            i = ni;
             i = skip(text, i);
         }
         i++;

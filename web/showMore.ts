@@ -265,34 +265,34 @@ export const showMore = (v: Val): ABlock => {
         }
     });
 
-    const seen: Record<string, true> = {};
-    const tops: ABlock[] = [];
+    const lowest: Record<string, string[]> = {};
 
-    const lowest: Record<string, number> = {}
-
-    const addFor = (top: string,) => {
-        if (seen[top]) return;
-        seen[top] = true;
-        tops.push(toplevel[top]);
-        if (!pinDeps[top]) {
-            console.log(pinDeps, top);
-            throw new Error(`not`);
-        }
+    const addFor = (top: string, path: string[]) => {
+        if (path.includes(top)) return;
+        if (lowest[top] && lowest[top].length > path.length) return;
+        lowest[top] = path;
+        const cpath = path.concat([top]);
         pinDeps[top].forEach((name) => {
-            addFor(name);
+            addFor(name, cpath);
         });
     };
 
     const rootValue = oneVal(root, ctx);
     const rootDeps: string[] = [];
     findTopRefs(rootValue, rootDeps);
-    rootDeps.forEach(addFor);
+    rootDeps.forEach((name) => addFor(name, ['root']));
     const node = showBody(rootValue, l);
     const main = recNodeToText(node, parse(node), WIDTH);
 
-    return tops.reverse().concat([main]).flat();
+    // return tops.reverse().concat([main]).flat();
 
-    // return [...Object.values(toplevel), main].flat();
+    return [
+        ...Object.entries(toplevel)
+            .sort((a, b) => lowest[b[0]].length - lowest[a[0]].length)
+            .map((m) => m[1]),
+        main,
+    ].flat();
 };
+
 export const rgb = ({ r, g, b }: { r: number; g: number; b: number }) =>
     `rgb(${r} ${g} ${b})`;

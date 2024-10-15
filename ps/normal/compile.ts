@@ -22,7 +22,7 @@ const asApp = (v: Value): null | [Value, Value] =>
 
 // NOTE: Not forcing anything here
 // looks like I don't in runtime2 either
-const extractLets = (body: Value, lets: Value[]): Value => {
+export const extractLets = (body: Value, lets: Value[]): Value => {
     const top = asApp(body);
     if (!top) return body;
     const next = asApp(top[0]);
@@ -71,7 +71,7 @@ const compileValue = (
 type BLazy = [0 | 1, Body, Body] | [1, Immediate];
 type Body = Immediate | BLazy | [3, number]; /* (ref int) */
 
-const toBody = (value: Value, maxIndex: number): Body => {
+export const toBody = (value: Value, maxIndex: number): Body => {
     switch (typeof value) {
         case 'bigint':
         case 'number':
@@ -221,39 +221,29 @@ const clean = (name: string) =>
         .replace(/\-/g, '$_')
         .replace(/[^0-9a-zA-Z_$]/g, '_');
 
-const oneVal = (
-    val: NVal,
-    pins: string[],
-    fns: Record<string, string>,
-    pinArities: Record<string, number>,
-): Value => {
+export type Ctx = {
+    pins: string[];
+    processLaw: (name: string, arity: number, value: Value) => void;
+};
+
+export const oneVal = (val: NVal, ctx: Ctx): Value => {
     switch (val.v[0]) {
         case PIN:
-            return pins[val.v[1]];
+            return ctx.pins[val.v[1]];
         case LAW:
             const name =
                 (val.v[1] > 0 ? clean(natToAscii(val.v[1])) + '_' : '') +
                 objectHash(val.v).slice(0, 4);
-            pinArities[name] = Number(val.v[2]);
-            fns[name] = compile(
-                name,
-                Number(val.v[2]),
-                oneVal(val.v[3], pins, fns, pinArities),
-                pinArities,
-            );
+            ctx.processLaw(name, Number(val.v[2]), oneVal(val.v[3], ctx));
             return name;
         case APP:
-            return [
-                0,
-                oneVal(val.v[1], pins, fns, pinArities),
-                oneVal(val.v[2], pins, fns, pinArities),
-            ];
+            return [0, oneVal(val.v[1], ctx), oneVal(val.v[2], ctx)];
         case NAT:
             return val.v[1];
     }
 };
 
-export const compileVal = (val: Val) => {
+export const preparePins = (val: Val) => {
     const npins: [NVal, Val][] = [];
     const changed = findPins(val, npins);
     const pinArities: Record<string, number> = {
@@ -276,25 +266,40 @@ export const compileVal = (val: Val) => {
         return hash;
     });
 
+    return {
+        pins: npins.map((v) => v[0]),
+        pinHashes,
+        pinArities,
+        root: changed,
+    };
+};
+
+export const compileVal = (val: Val) => {
+    const { pins, pinHashes, pinArities, root } = preparePins(val);
+
     const toplevel: Record<string, string> = {};
-    npins.forEach(([nv, _], i) => {
+    const ctx: Ctx = {
+        pins: pinHashes,
+        processLaw(name, arity, value) {
+            pinArities[name] = Number(arity);
+            toplevel[name] = compile(name, arity, value, pinArities);
+        },
+    };
+    pins.forEach((nv, i) => {
         const hash = pinHashes[i];
         if (nv.v[0] === LAW) {
             toplevel[hash] = compile(
                 hash,
                 Number(nv.v[2]),
-                oneVal(nv.v[3], pinHashes, toplevel, pinArities),
+                oneVal(nv.v[3], ctx),
                 pinArities,
             );
         } else {
-            toplevel[hash] = compileValue(
-                oneVal(nv, pinHashes, toplevel, pinArities),
-                pinArities,
-            );
+            toplevel[hash] = compileValue(oneVal(nv, ctx), pinArities);
         }
     });
 
-    const main = oneVal(changed, pinHashes, toplevel, pinArities);
+    const main = oneVal(root, ctx);
 
     toplevel.main = compileValue(main, pinArities);
 

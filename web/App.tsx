@@ -83,12 +83,14 @@ export const aBlockToNodes = (block: ABlock) => {
     ));
 };
 
-import { reader, readerMulti } from 'j3/one-world/evaluators/boot-ex/reader';
-import { IDRef, keyForLoc, RecNode } from 'j3/one-world/shared/nodes';
-import { fromRecNode } from './astToValue';
-import { fixGlobals, getExport, parse } from './format-parse';
+import { reader } from 'j3/one-world/evaluators/boot-ex/reader';
+import { keyForLoc } from 'j3/one-world/shared/nodes';
+import { fromAST } from './astToValue';
+import { parse } from './format-parse';
 import { recNodeToText } from 'j3/one-world/client/cli/drawDocNode';
 import { forceDeep, show } from '../ps/normal/runtime';
+import { showMValue, stackMain } from '../ps/stepper/runtime';
+import { readSeveral } from './readSeveral';
 
 export const App = () => {
     const [text, setText] = useState(localStorage[key] || initialText);
@@ -101,43 +103,13 @@ export const App = () => {
     const compiled = useMemo(() => {
         const maxWidth = 50;
         try {
-            const tops: RecNode[] = [];
-            let i = 0;
-            let fullText = builtins + text;
-
-            const globals: Record<string, IDRef> = {
-                NCASE: { type: 'builtin', kind: '' },
-                INC: { type: 'builtin', kind: '' },
-                PCASE: { type: 'builtin', kind: '' },
-                LAW: { type: 'builtin', kind: '' },
-                PIN: { type: 'builtin', kind: '' },
-            };
-
-            while (i < fullText.length) {
-                const result = readerMulti(i, fullText, 'full', globals, false);
-                if (!result) break;
-                tops.push(result.node);
-                i = result.i;
-            }
-            const full: JSX.Element[] = [];
-            const nameForLoc: Record<string, string> = {};
-
-            tops.forEach((top) => {
-                const exp = getExport(top);
-                if (exp) {
-                    globals[exp.text] = {
-                        type: 'toplevel',
-                        kind: '',
-                        loc: exp.loc,
-                    };
-                    nameForLoc[keyForLoc(exp.loc)] = exp.text;
-                }
-            });
-
-            tops.forEach((top) => fixGlobals(top, globals));
+            let fullText = text.includes('+') ? builtins + text : text;
+            const { tops, parseds, nameForLoc, globals } =
+                readSeveral(fullText);
 
             const topValues: Toplevels = {};
 
+            const full: JSX.Element[] = [];
             tops.forEach((top, i) => {
                 const parsed = parse(top);
                 if (!parsed.top) {
@@ -145,11 +117,12 @@ export const App = () => {
                         `cant parse I guess ${JSON.stringify(parsed.errors)}`,
                     );
                 }
+                parseds.push(parsed.top);
                 let base =
                     (parsed.top.type === 'law' && parsed.top.name?.text) ||
                     `top${i}`;
                 // base = clean(base);
-                const body = fromRecNode(parsed.top, [], {
+                const body = fromAST(parsed.top, [], {
                     locHash(loc) {
                         return nameForLoc[keyForLoc(loc)];
                         // return loc.map((l) => `${l[0]}_${l[1]}`).join('__');
@@ -187,6 +160,8 @@ export const App = () => {
                 );
             });
 
+            const stepper = stackMain(parseds);
+
             let res = '';
             let slider = false;
 
@@ -207,26 +182,8 @@ export const App = () => {
 
                 res += `\n\n${err.message}\n${err.stack}`;
             }
-            // res += '\n\n' + show(result);
 
-            // const main = getMain(builtins + text);
-            // const full = aBlockToNodes(showMore(main));
-            // if (
-            //     main.v[0] === PIN &&
-            //     main.v[1].v[0] === LAW &&
-            //     main.v[1].v[2] === 0n
-            // ) {
-            //     const ran = showNice(jsjit.run(plainBody(main.v[1].v[3])));
-            //     res = ran;
-            // } else {
-            //     slider = true;
-            //     const ran = showNice(
-            //         jsjit.run({ v: [APP, main, { v: [NAT, BigInt(v)] }] }),
-            //     );
-            //     res = ran;
-            // }
-
-            return { full, res, slider, code };
+            return { full, res, slider, code, stepper };
         } catch (err) {
             return {
                 full: (err as Error).message + '\n' + (err as Error).stack,
@@ -270,12 +227,49 @@ export const App = () => {
                             flex: 1,
                             minHeight: 0,
                             overflow: 'auto',
-                            height: 500,
+                            // height: 500,
                         }}
                     >
                         {compiled.code}
                     </div>
                 </div>
+                <br />
+                {compiled.stepper ? (
+                    <>
+                        <table>
+                            <tbody>
+                                {compiled.stepper.memory.heap.map((v, i) => (
+                                    <tr key={i}>
+                                        <td>{i}</td>
+                                        <td>{showMValue(v)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        {Object.entries(compiled.stepper.memory.laws).map(
+                            ([name, { buffer, arity }]) => (
+                                <div key={name} style={{ padding: 16 }}>
+                                    <div>
+                                        {name} (arity {arity})
+                                    </div>
+                                    <table>
+                                        <tbody>
+                                            {buffer.map((v, i) => (
+                                                <tr key={i}>
+                                                    <td>{i}</td>
+                                                    <td>{showMValue(v)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ),
+                        )}
+                        {/* {JSON.stringify(compiled.stepper.laws, (_, v) =>
+                            typeof v === 'bigint' ? v + '' : v,
+                        )} */}
+                    </>
+                ) : null}
                 <br />
                 {compiled.slider ? (
                     <>

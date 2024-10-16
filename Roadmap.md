@@ -1,4 +1,20 @@
 
+# Stepper runtime
+doing all the manual memory mumbojumbo
+fanciness
+
+
+Things that are maybe working:
+
+lol I should just have tests like a real boy
+
+-
+
+
+
+
+#
+
 - [x] go all in on parsing
 - [x] connect it up to the latest runtime
 - [ ] add to the runtime... types... so that APP has an 'id' associated with it, and I can log when things get evaluated.

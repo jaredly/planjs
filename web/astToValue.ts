@@ -41,12 +41,12 @@ export const findFree = (node: AST, locals: string[], found: string[]) => {
     }
 };
 
-export const fromRecNode = (node: AST, locals: string[], ctx: Ctx): Body => {
+export const fromAST = (node: AST, locals: string[], ctx: Ctx): Body => {
     switch (node.type) {
         case 'app': {
-            let res = fromRecNode(node.target, locals, ctx);
+            let res = fromAST(node.target, locals, ctx);
             for (let i = 0; i < node.args.length; i++) {
-                res = [0, res, fromRecNode(node.args[i], locals, ctx)];
+                res = [0, res, fromAST(node.args[i], locals, ctx)];
             }
             return res;
         }
@@ -77,9 +77,9 @@ export const fromRecNode = (node: AST, locals: string[], ctx: Ctx): Body => {
                 args.slice(1),
                 node.lets.map((l) => ({
                     name: l.name,
-                    value: fromRecNode(l.value, allLocals, ctx),
+                    value: fromAST(l.value, allLocals, ctx),
                 })),
-                fromRecNode(node.body, allLocals, ctx),
+                fromAST(node.body, allLocals, ctx),
             );
             for (let arg of extraArgs) {
                 if (locals.indexOf(arg) === -1)

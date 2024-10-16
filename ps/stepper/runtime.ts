@@ -19,7 +19,7 @@ type MValue =
 
 export type Memory = {
     // top at 0
-    stack: { at: ptr; ret: ptr }[];
+    stack: { at: ptr; step?: 'f' | 'x' }[];
     heap: MValue[];
     laws: Record<
         string,
@@ -28,6 +28,42 @@ export type Memory = {
             arity: number;
         }
     >;
+};
+
+export const prepareLaw = (
+    buffer: MValue[],
+    args: Ref[],
+    p0: number,
+): MValue[] => {
+    const modRef = (ref: Ref): Ref => {
+        switch (ref.type) {
+            case 'PIN':
+                return ref;
+            case 'LOCAL':
+                return { type: 'LOCAL', v: p0 + ref.v };
+            case 'STACK':
+                if (ref.v === 0) throw new Error('self sry');
+                if (ref.v <= args.length) {
+                    return args[ref.v - 1];
+                }
+                return { type: 'LOCAL', v: p0 + ref.v - args.length - 1 };
+        }
+    };
+
+    return buffer.map((value) => {
+        switch (value.type) {
+            case 'NAT':
+            case 'LAW':
+                return value;
+            case 'APP':
+                return {
+                    type: 'APP',
+                    f: modRef(value.f),
+                    x: modRef(value.x),
+                    ev: false,
+                };
+        }
+    });
 };
 
 /*
@@ -76,14 +112,129 @@ would that make things ... simpler?
 
 */
 
+// export const resolve = (memory: Memory, ref: Ref) => {
+//     switch (ref.type) {
+//         case 'LOCAL':
+//             return memory.heap[ref.v]
+//     }
+// }
+
+const unwrap = (memory: Memory, ref: Ref): null | [Ref, Ref[]] => {
+    const v = memory.heap[ref.v];
+    if (v.type === 'APP') {
+        const inner = unwrap(memory, v.f);
+        if (!inner) return null;
+        const [f, args] = inner;
+        args.push(v.x);
+        return [f, args];
+    }
+    if (v.type === 'NAT' && ref.type !== 'PIN') {
+        return null; // can't apply a non-pinned nat
+    }
+    return [ref, []];
+};
+
+export const nat = (memory: Memory, ref: Ref): null | bigint => {
+    const v = memory.heap[ref.v];
+    if (v.type === 'NAT') return v.v;
+    if (v.type === 'LAW') return 0n;
+    return v.ev ? 0n : null;
+};
+
+const nextDeep = (memory: Memory, dest: number): number | void => {
+    const v = memory.heap[dest];
+    if (v.type !== 'APP') return;
+    if (!v.ev) return dest;
+    return nextDeep(memory, v.f.v) ?? nextDeep(memory, v.x.v);
+};
+
+export const deep = (memory: Memory, dest: number) => {
+    const next = nextDeep(memory, dest);
+    if (next == null) return;
+    memory.stack.push({ at: next });
+    return true;
+};
+
 export const step = (memory: Memory) => {
-    const { at, ret } = memory.stack[0];
-    const v = memory.heap[at];
+    const frame = memory.stack[0];
+    const v = memory.heap[frame.at];
     switch (v.type) {
         case 'NAT':
         case 'LAW':
-            return memory.stack.shift();
+            memory.stack.shift();
+            return;
+        // throw new Error('idk')
         case 'APP': {
+            if (frame.step === null) {
+                frame.step = 'f';
+                memory.stack.unshift({ at: v.f.v });
+                return;
+            }
+            v.ev = true;
+            memory.stack.shift();
+            const inner = unwrap(memory, v.f);
+            if (!inner) {
+                return;
+            }
+            const [f, args] = inner;
+            const fv = memory.heap[f.v];
+            if (fv.type === 'APP') {
+                return;
+            }
+            args.push(v.x);
+            if (fv.type === 'NAT') {
+                if (f.type === 'PIN') {
+                    switch (fv.v) {
+                        case 0n: // LAW
+                            throw new Error('op law not sup');
+                        case 1n: // PCASE
+                            throw new Error('op pcase not sup');
+                        case 2n: // NCASE
+                            throw new Error('op ncase not sup');
+                        case 3n: // INC
+                            if (args.length === 1) {
+                                const n = nat(memory, args[0]);
+                                if (n == null) {
+                                    // needs eval
+                                    v.ev = false;
+                                    memory.stack.unshift(frame);
+                                    frame.step = 'x';
+                                    memory.stack.unshift({
+                                        at: args[0].v,
+                                    });
+                                    return;
+                                }
+                                memory.heap[frame.at] = {
+                                    type: 'NAT',
+                                    v: n + 1n,
+                                };
+                                return;
+                            } else {
+                                return;
+                            }
+                        case 4n: // PIN
+                            throw new Error('op pin not sup');
+                    }
+                    return;
+                } else {
+                    return;
+                }
+            }
+
+            // OK SO here's where we get a little fancy
+            // because we take the law's heap
+            // and we dump it onto the heap
+            // and then ... like ... add a frame pointer ...
+            const law = memory.laws[natToAscii(fv.v)];
+            if (args.length !== law.arity) {
+                return; // not gonna
+            }
+
+            const nvs = prepareLaw(law.buffer, args, memory.heap.length);
+            memory.heap[frame.at] = nvs.pop()!;
+            memory.heap.push(...nvs);
+            memory.stack.push({ at: frame.at });
+            return;
         }
     }
 };
@@ -109,6 +260,34 @@ export const showRef = (v: Ref) => {
             return `stack#${v.v}`;
     }
 };
+
+const unwrapV = (r: Ref, memory: Memory, res: MValue[]) => {
+    const v = memory.heap[r.v];
+    if (v.type === 'APP' && v.ev) {
+        unwrapV(v.f, memory, res);
+        res.push(memory.heap[v.x.v]);
+    } else {
+        res.push(v);
+    }
+};
+
+export const prettyMValue = (v: MValue, memory: Memory): string => {
+    switch (v.type) {
+        case 'LAW':
+            return natToAscii(v.v);
+        case 'APP':
+            const args: MValue[] = [];
+            unwrapV(v.f, memory, args);
+            args.push(memory.heap[v.x.v]);
+            // const f = prettyMValue(memory.heap[v.f.v], memory);
+            // const x = prettyMValue(, memory);
+            // return `APP(${f}, ${x}${v.ev ? '' : ', lazy'})`;
+            return `(${args.map((v) => prettyMValue(v, memory)).join(', ')})`;
+        case 'NAT':
+            return v.v + '';
+    }
+};
+
 export const showMValue = (v: MValue) => {
     switch (v.type) {
         // case 'PIN':

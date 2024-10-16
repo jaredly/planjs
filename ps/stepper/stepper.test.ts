@@ -270,11 +270,10 @@ test('tinf', () => {
     (take 3 inf))
         `,
         '(5 (5 (5 0)))',
-        true,
     );
 });
 
-test.skip('annnnnd now like ... maybe fibonacci', () => {
+test('annnnnd now like ... maybe fibonacci', () => {
     check(
         `
 (defn + [a b]
@@ -319,9 +318,9 @@ test.skip('annnnnd now like ... maybe fibonacci', () => {
 
 (defn inf [x] (let self (x self)) self)
 
-(defn main [n] (take 5 (inf 2)))
+(defn main [n] (fib 6))
 
         `,
-        `(2 2 2 2 2)`,
+        `(0 (1 (1 (2 (3 (5 0))))))`,
     );
 });

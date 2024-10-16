@@ -498,11 +498,10 @@ type Ctx = {
         args: string[],
         lets: { name: string; value: AST }[],
         value: AST,
-        dest?: number,
     ): ptr;
-    locPin: (loc: Loc, dest?: number) => Ref;
+    locPin: (loc: Loc) => Ref;
     lawNum: { v: number };
-    alloc(v: MValue, dest?: number): ptr;
+    alloc(v: MValue): ptr;
     pin(v: MValue): Ref;
 };
 
@@ -562,7 +561,7 @@ export const stackMain = (tops: AST[]) => {
 
     const ctxFor = (buffer: MValue[], base: string, lawNum: { v: number }) => {
         const ctx: Ctx = {
-            processLaw(fns, name, args, lets, value, dest) {
+            processLaw(fns, name, args, lets, value) {
                 const id = fns === 0 ? base : `${base}_${fns}`;
                 memory.laws[id] = allocLaw(id, args, lets, value, lawNum);
                 if (name) {
@@ -570,13 +569,9 @@ export const stackMain = (tops: AST[]) => {
                     memory.heap[ptr] = { type: 'LAW', v: asciiToNat(id) };
                     return ptr;
                 }
-                return alloc({ type: 'LAW', v: asciiToNat(id) }, dest);
+                return alloc({ type: 'LAW', v: asciiToNat(id) });
             },
-            alloc(v, dest) {
-                if (dest != null) {
-                    memory.heap[dest] = v;
-                    return dest;
-                }
+            alloc(v) {
                 buffer.push(v);
                 return buffer.length - 1;
             },
@@ -640,7 +635,7 @@ export const mvalueFromAST = (
     node: AST,
     locals: string[],
     ctx: Ctx,
-    dest?: number,
+    // dest?: number,
 ): Ref => {
     switch (node.type) {
         case 'app': {
@@ -655,7 +650,7 @@ export const mvalueFromAST = (
                             x: mvalueFromAST(node.args[i], locals, ctx),
                             ev: false,
                         },
-                        i === node.args.length - 1 ? dest : undefined,
+                        // i === node.args.length - 1 ? dest : undefined,
                     ),
                 };
             }
@@ -666,7 +661,7 @@ export const mvalueFromAST = (
         case 'nat':
             return {
                 type: 'LOCAL',
-                v: ctx.alloc({ type: 'NAT', v: node.number }, dest),
+                v: ctx.alloc({ type: 'NAT', v: node.number }),
             };
         case 'builtin':
             const code = OPS[node.name as 'LAW'];
@@ -699,7 +694,6 @@ export const mvalueFromAST = (
                     // })),
                     node.body,
                     // mvalueFromAST(node.body, allLocals, ctx),
-                    !extraArgs.length ? dest : undefined,
                 ),
             };
             for (let i = 0; i < extraArgs.length; i++) {
@@ -708,18 +702,15 @@ export const mvalueFromAST = (
                     throw new Error(`unbound free vbl ${arg}`);
                 res = {
                     type: 'LOCAL',
-                    v: ctx.alloc(
-                        {
-                            type: 'APP',
-                            f: res,
-                            x: {
-                                type: 'STACK',
-                                v: locals.indexOf(arg),
-                            },
-                            ev: false,
+                    v: ctx.alloc({
+                        type: 'APP',
+                        f: res,
+                        x: {
+                            type: 'STACK',
+                            v: locals.indexOf(arg),
                         },
-                        i === extraArgs.length - 1 ? dest : undefined,
-                    ),
+                        ev: false,
+                    }),
                 };
             }
             return res;
@@ -735,10 +726,10 @@ export const mvalueFromAST = (
             if (node.templates.length) throw new Error('not supported tpl yet');
             return {
                 type: 'LOCAL',
-                v: ctx.alloc({ type: 'NAT', v: asciiToNat(node.first) }, dest),
+                v: ctx.alloc({ type: 'NAT', v: asciiToNat(node.first) }),
             };
         case 'pin':
-            return ctx.locPin(node.ref, dest);
+            return ctx.locPin(node.ref);
     }
 };
 

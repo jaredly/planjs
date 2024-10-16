@@ -172,6 +172,7 @@ const showBody = (v: Body, l: () => Loc): RecNode => {
             };
     }
 };
+
 const showLaw = (
     name: string,
     arity: number,
@@ -219,6 +220,7 @@ const showLaw = (
     console.log('parsed', name, ps);
     return recNodeToText(node, ps, WIDTH);
 };
+
 const nameFn = (name: string, hash: string) => name || hash; //`${name}#${hash.slice(0, 4)}`;
 
 export const showMore = (v: Val): ABlock => {
@@ -283,8 +285,6 @@ export const showMore = (v: Val): ABlock => {
     rootDeps.forEach((name) => addFor(name, ['root']));
     const node = showBody(rootValue, l);
     const main = recNodeToText(node, parse(node), WIDTH);
-
-    // return tops.reverse().concat([main]).flat();
 
     return [
         ...Object.entries(toplevel)

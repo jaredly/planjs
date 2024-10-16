@@ -95,87 +95,6 @@ export const toBody = (value: Value, maxIndex: number): Body => {
     return value;
 };
 
-// // hrmmmmm ok so this needs to happen /after/ translating a BODY to ~normal code.
-// // which means, we want a BODYAST that we can work on, that shares some similarities
-// // to the normal AST.
-// export const maybeCollapse = (
-//     target: Body,
-//     pinArities: Record<string, number>,
-// ) => {
-//     if (1 || typeof target !== 'object' || target[0])
-//         return;
-//     console.log('consider', show(target));
-//     const trail: { v: BLazy; arg: Body }[] = [];
-//     let f: Body | Function = target;
-//     let self: null | Body = null;
-//     while (true) {
-//         console.log(`at`, f);
-//         switch (typeof f) {
-//             case 'string': {
-//                 // let inner: Value | Function = PINS[f];
-//                 // if (!inner) throw new Error(`unknown pinnn ${f}`);
-//                 // if (inner === 0 || inner === 0n) inner = OP_FNS.LAW;
-//                 // if (inner === 1 || inner === 1n) inner = OP_FNS.PCASE;
-//                 // if (inner === 2 || inner === 2n) inner = OP_FNS.NCASE;
-//                 // if (inner === 3 || inner === 3n) inner = OP_FNS.INC;
-//                 // if (inner === 4 || inner === 4n) inner = OP_FNS.PIN;
-//                 // self = f;
-//                 // f = inner;
-//                 const arity = pinArities[f];
-//                 if (!arity) throw new Error(`unknown pin ${f}`);
-
-//                 const dest = trail[Math.min(trail.length, arity) - 1];
-//                 dest.v[0] = 0;
-//                 dest.v[1] = f;
-//                 dest.v[2] = trail.slice(0, arity).map((t) => t.arg) as [
-//                     Value,
-//                     ...Value[],
-//                 ];
-
-//                 return;
-//             }
-//             case 'function': {
-//                 // if (f.length <= trail.length) {
-//                 const dest = trail[Math.min(trail.length, f.length) - 1];
-//                 dest.v[0] = 0;
-//                 dest.v[1] = self ?? (f as Law);
-//                 dest.v[2] = trail.slice(0, f.length).map((t) => t.arg) as [
-//                     Value,
-//                     ...Value[],
-//                 ];
-//                 console.log('here we are', show(dest.v));
-//                 // } else {
-//                 //     console.log(`no need ... less?`)
-//                 // }
-
-//                 return;
-//             }
-//             case 'object':
-//                 if (f[0] === 3) return;
-//                 if (f[0]) {
-//                     f = f[1];
-//                     continue;
-//                 }
-//                 if (f[2].length > 1) {
-//                     console.warn('ignoring possible further-collapsible thing');
-//                     return;
-//                 }
-//                 trail.unshift({ v: f, arg: f[2][0] });
-//                 f = f[1];
-//                 continue;
-//             case 'number':
-//             case 'bigint':
-//                 const dest = trail[trail.length - 1];
-//                 dest.v[0] = 0;
-//                 dest.v[1] = f;
-//                 dest.v[2] = trail.map((t) => t.arg) as [Value, ...Value[]];
-//                 return;
-//         }
-//         console.log('and we are come o the end of things', typeof f);
-//         break;
-//     }
-// };
-
 export const compile = (
     name: string,
     arity: number,
@@ -340,28 +259,26 @@ export const jsjit: RT = {
             setLocal,
         });
 
-        PINS['$pl_ff0f'] =
-            PINS['$pl_5dd6'] =
-            PINS['$pl_1255'] =
-                asLaw(
-                    (a: Value, b: Value) => {
-                        a = force(a);
-                        b = force(b);
-                        if (typeof a !== 'bigint' && typeof a !== 'number')
-                            return 0;
-                        if (typeof b !== 'bigint' && typeof b !== 'number')
-                            return 0;
-                        if (typeof a === 'number' && typeof b === 'number')
-                            return a + b;
-                        return BigInt(a) + BigInt(b);
-                    },
-                    0n,
-                    0,
-                );
+        const jetPlus = asLaw(
+            (a: Value, b: Value) => {
+                a = force(a);
+                b = force(b);
+                if (typeof a !== 'bigint' && typeof a !== 'number') return 0;
+                if (typeof b !== 'bigint' && typeof b !== 'number') return 0;
+                if (typeof a === 'number' && typeof b === 'number')
+                    return a + b;
+                return BigInt(a) + BigInt(b);
+            },
+            0n,
+            0,
+        );
 
-        // console.log(code);
-        // console.log(PINS.main);
-        // console.log(show(PINS.main));
+        Object.keys(PINS).forEach((k) => {
+            if (k.startsWith('$pl_')) {
+                PINS[k] = jetPlus;
+            }
+        });
+
         return show(forceDeep(PINS.main));
     },
 };

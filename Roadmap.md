@@ -1,4 +1,22 @@
 
+- [x] go all in on parsing
+- [ ] connect it up to the latest runtime
+- [ ] add to the runtime... types... so that APP has an 'id' associated with it, and I can log when things get evaluated.
+- [ ] thennnnn I want like ... an "incremental evaluator".
+  so I can pause in the middle of a step.
+  this will involve manually having a stack, I imagine.
+
+
+yeahhh ok so I'm going to make a `stepper` runtime that also
+like does the full memory management I think.
+for funsies.
+
+
+
+
+
+
+
 # Let's recover variable names?
 
 - [ ] yeah hang on to variable names in PLAN so I can re-render them back

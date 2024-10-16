@@ -58,7 +58,7 @@ export const aBlockToNodes = (block: ABlock) => {
         <div key={l}>
             {line.map((chunk, i) => (
                 <span
-                    key={i}
+                    key={`${l}:${i}`}
                     style={{
                         ...chunk.style,
                         color: chunk.style?.color
@@ -67,6 +67,7 @@ export const aBlockToNodes = (block: ABlock) => {
                         background: chunk.style?.background
                             ? rgb(chunk.style.background)
                             : undefined,
+                        textDecorationStyle: 'dotted',
                     }}
                 >
                     {chunk.text}
@@ -75,6 +76,12 @@ export const aBlockToNodes = (block: ABlock) => {
         </div>
     ));
 };
+
+import { reader, readerMulti } from 'j3/one-world/evaluators/boot-ex/reader';
+import { IDRef, keyForLoc, RecNode } from 'j3/one-world/shared/nodes';
+import { fromRecNode } from './astToValue';
+import { fixGlobals, getExport, parse } from './format-parse';
+import { recNodeToText } from 'j3/one-world/client/cli/drawDocNode';
 
 export const App = () => {
     const [text, setText] = useState(localStorage[key] || initialText);
@@ -85,27 +92,100 @@ export const App = () => {
     }, [text]);
 
     const compiled = useMemo(() => {
+        const maxWidth = 50;
         try {
-            const main = getMain(builtins + text);
-            // const full = showNice(main);
-            const full = aBlockToNodes(showMore(main));
+            const tops: RecNode[] = [];
+            let i = 0;
+            let fullText = builtins + text;
+
+            const globals: Record<string, IDRef> = {
+                NCASE: { type: 'builtin', kind: '' },
+                INC: { type: 'builtin', kind: '' },
+                PCASE: { type: 'builtin', kind: '' },
+                LAW: { type: 'builtin', kind: '' },
+                PIN: { type: 'builtin', kind: '' },
+            };
+
+            while (i < fullText.length) {
+                const result = readerMulti(i, fullText, 'full', globals, false);
+                if (!result) break;
+                tops.push(result.node);
+                i = result.i;
+            }
+            const full: JSX.Element[] = [];
+            const nameForLoc: Record<string, string> = {};
+
+            tops.forEach((top) => {
+                const exp = getExport(top);
+                if (exp) {
+                    globals[exp.text] = {
+                        type: 'toplevel',
+                        kind: '',
+                        loc: exp.loc,
+                    };
+                    nameForLoc[keyForLoc(exp.loc)] = exp.text;
+                }
+            });
+
+            tops.forEach((top) => fixGlobals(top, globals));
+
+            tops.forEach((top, i) => {
+                const parsed = parse(top);
+                if (!parsed.top) {
+                    throw new Error(
+                        `cant parse I guess ${JSON.stringify(parsed.errors)}`,
+                    );
+                }
+                const base =
+                    (parsed.top.type === 'law' && parsed.top.name?.text) ||
+                    `top${i}`;
+                let fns = 0;
+                const body = fromRecNode(parsed.top, [], {
+                    locHash(loc) {
+                        return loc.map((l) => `${l[0]}_${l[1]}`).join('__');
+                    },
+                    processLaw(name, args, lets, value) {
+                        fns++;
+
+                        if (fns === 0) {
+                            return base;
+                        }
+                        return `${base}_${name ?? ''}`;
+                    },
+                });
+                const text = recNodeToText(
+                    top,
+                    parsed,
+                    maxWidth,
+                    (loc) => nameForLoc[keyForLoc(loc)],
+                );
+                full.push(
+                    <div style={{ marginBottom: 16 }} key={i}>
+                        {aBlockToNodes(text)}
+                    </div>,
+                );
+            });
+
             let res = '';
             let slider = false;
-            if (
-                main.v[0] === PIN &&
-                main.v[1].v[0] === LAW &&
-                main.v[1].v[2] === 0n
-            ) {
-                const ran = showNice(jsjit.run(plainBody(main.v[1].v[3])));
-                res = ran;
-            } else {
-                slider = true;
-                const ran = showNice(
-                    jsjit.run({ v: [APP, main, { v: [NAT, BigInt(v)] }] }),
-                );
-                res = ran;
-                // res = `Main should have 0 arguments, not ${main.v[1]}`;
-            }
+
+            // const main = getMain(builtins + text);
+            // const full = aBlockToNodes(showMore(main));
+            // if (
+            //     main.v[0] === PIN &&
+            //     main.v[1].v[0] === LAW &&
+            //     main.v[1].v[2] === 0n
+            // ) {
+            //     const ran = showNice(jsjit.run(plainBody(main.v[1].v[3])));
+            //     res = ran;
+            // } else {
+            //     slider = true;
+            //     const ran = showNice(
+            //         jsjit.run({ v: [APP, main, { v: [NAT, BigInt(v)] }] }),
+            //     );
+            //     res = ran;
+            // }
+
             return { full, res, slider };
         } catch (err) {
             return {

@@ -17,6 +17,8 @@ type Lazy = [0 | 1, Value, Value] | [1, Immediate]; // { lazy: Immediate | App; 
 export type Value = Immediate | Lazy;
 export type Immediate = Law | number | bigint | string;
 export type Law = Function & { nameNat: bigint; body: Value };
+export type BLazy = [0 | 1, Body, Body] | [1, Immediate];
+export type Body = Immediate | BLazy | [3, string]; /* (ref int) */
 
 export const PINS: Record<string, Value> = {
     LAW: 0,
@@ -54,9 +56,6 @@ const unwrapList = (v: Body, lst: Body[]) => {
     lst.push(v);
 };
 
-export type BLazy = [0 | 1, Body, Body] | [1, Immediate];
-export type Body = Immediate | BLazy | [3, number]; /* (ref int) */
-
 export const show = (v: Body, trail: Body[] = []): string => {
     if (trail.includes(v)) return 'recurse';
     trail = [...trail, v];
@@ -93,9 +92,10 @@ export const forceDeep = (v: Value): Value => {
 
 export const force = (v: Value): Value => {
     if (typeof v !== 'object') return v;
+    // console.log('forcing', show(v));
     if (!v[0]) forceApp(v);
     collapseLazy(v);
-    // console.log('resolve', show(v));
+    // console.log('resolve', v, show(v));
     return v.length === 2 ? v[1] : v;
 };
 
@@ -153,7 +153,10 @@ const forceApp = (v: Value) => {
                     return; // nothing to see here
                 }
                 const dest = trail[f.length - 1];
+                // what is the deal with that?
+                if (!dest) return;
                 const args = trail.splice(0, f.length).map((a) => a.arg);
+                // console.log('calling with args', args);
                 const result: Value = f.apply(self ?? f, args);
                 if (!trail.length) {
                     v[0] = 0;

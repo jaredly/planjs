@@ -1,6 +1,6 @@
 
 - [x] go all in on parsing
-- [ ] connect it up to the latest runtime
+- [x] connect it up to the latest runtime
 - [ ] add to the runtime... types... so that APP has an 'id' associated with it, and I can log when things get evaluated.
 - [ ] thennnnn I want like ... an "incremental evaluator".
   so I can pause in the middle of a step.
@@ -10,6 +10,18 @@
 yeahhh ok so I'm going to make a `stepper` runtime that also
 like does the full memory management I think.
 for funsies.
+
+gonna have a [stack] probably
+and a [heap] definitely
+anddddd maybe a [data] for the PINS, but I
+don't have to do that quite yet. I can cheat on that one.
+
+
+
+
+
+
+
 
 
 

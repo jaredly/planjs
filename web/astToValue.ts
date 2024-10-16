@@ -5,12 +5,14 @@ import { asciiToNat } from '../runtime/natToAscii';
 
 type Ctx = {
     processLaw(
+        lawNum: number,
         name: string | undefined,
         args: string[],
         lets: { name: string; value: Body }[],
         value: Body,
-    ): Value;
+    ): Body;
     locHash: (loc: Loc) => string;
+    lawNum: number;
 };
 
 export const findFree = (node: AST, locals: string[], found: string[]) => {
@@ -55,8 +57,9 @@ export const fromRecNode = (node: AST, locals: string[], ctx: Ctx): Body => {
         case 'builtin':
             return node.name;
         case 'law':
+            const name = node.name?.text ?? 'self';
             const fnLocals = [
-                node.name?.text ?? 'self',
+                name,
                 ...node.args,
                 ...node.lets.map((l) => l.name),
             ];
@@ -64,16 +67,14 @@ export const fromRecNode = (node: AST, locals: string[], ctx: Ctx): Body => {
             findFree(node.body, fnLocals, extraArgs);
             // assume everything else is global
             extraArgs = extraArgs.filter((f) => locals.includes(f));
-            const args = [
-                node.name?.text ?? 'self',
-                ...extraArgs,
-                ...node.args,
-            ];
+            const args = [name, ...extraArgs, ...node.args];
             const allLocals = args.concat(node.lets.map((l) => l.name));
             // console.log('law', args, allLocals, extraArgs);
+            let fn = ctx.lawNum++;
             let res = ctx.processLaw(
+                fn,
                 node.name?.text,
-                args,
+                args.slice(1),
                 node.lets.map((l) => ({
                     name: l.name,
                     value: fromRecNode(l.value, allLocals, ctx),
@@ -83,7 +84,7 @@ export const fromRecNode = (node: AST, locals: string[], ctx: Ctx): Body => {
             for (let arg of extraArgs) {
                 if (locals.indexOf(arg) === -1)
                     throw new Error(`unbound free vbl ${arg}`);
-                res = [0, res, locals.indexOf(arg)];
+                res = [0, res, [3, arg]];
             }
             return res;
         case 'local':
@@ -93,7 +94,7 @@ export const fromRecNode = (node: AST, locals: string[], ctx: Ctx): Body => {
                 // throw new Error(`unbound local ${node.name}`);
                 return node.name;
             }
-            return [3, at];
+            return [3, node.name];
         case 'string':
             if (node.templates.length) throw new Error('not supported tpl yet');
             return asciiToNat(node.first);

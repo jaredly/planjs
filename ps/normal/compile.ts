@@ -3,6 +3,7 @@ import { findPins, NVal } from '../../runtime/arraybuffer';
 import { APP, LAW, NAT, OPNAMES, PIN, Val } from '../../runtime/types';
 import {
     asLaw,
+    Body,
     force,
     forceDeep,
     Immediate,
@@ -35,10 +36,7 @@ export const extractLets = (body: Value, lets: Value[]): Value => {
     return body;
 };
 
-const compileValue = (
-    value: Body,
-    pinArities: Record<string, number>,
-): string => {
+const compileValue = (value: Body): string => {
     switch (typeof value) {
         case 'bigint':
             return value.toString() + 'n';
@@ -50,17 +48,16 @@ const compileValue = (
             return JSON.stringify(value);
         default:
             if (value.length === 2 && value[0] === 3) {
-                if (value[1] === 0) return 'this';
-                return `$${value[1]}`;
+                // if (value[1] === 0) return 'this';
+                // return `$${value[1]}`;
+                return value[1];
             }
-            // maybeCollapse(value, pinArities);
             if (value.length === 3) {
-                return `[${value[0]}, ${compileValue(
-                    value[1],
-                    pinArities,
-                )}, ${compileValue(value[2], pinArities)}]`;
+                return `[${value[0]}, ${compileValue(value[1])}, ${compileValue(
+                    value[2],
+                )}]`;
             }
-            return compileValue(value[1], pinArities);
+            return compileValue(value[1]);
     }
 };
 
@@ -68,15 +65,18 @@ const compileValue = (
 // export type Value = Immediate | Lazy;
 // type Immediate = Law | number | bigint | string;
 // export type Law = Function & { nameNat: bigint; body: Value };
-type BLazy = [0 | 1, Body, Body] | [1, Immediate];
-type Body = Immediate | BLazy | [3, number]; /* (ref int) */
+// type BLazy = [0 | 1, Body, Body] | [1, Immediate];
+// type Body = Immediate | BLazy | [3, number]; /* (ref int) */
 
 export const toBody = (value: Value, maxIndex: number): Body => {
     switch (typeof value) {
         case 'bigint':
         case 'number':
             if (value <= maxIndex) {
-                return [3, Number(value)];
+                if (value === 0 || value === 0n) {
+                    return [3, 'this'];
+                }
+                return [3, `$${Number(value)}`];
             }
             return value;
         case 'object':
@@ -95,34 +95,21 @@ export const toBody = (value: Value, maxIndex: number): Body => {
     return value;
 };
 
-export const compile = (
+export const compileLaw = (
     name: string,
-    arity: number,
-    body: Value,
-    pinArities: Record<string, number>,
+    args: string[],
+    lets: { name: string; value: Body }[],
+    body: Body,
 ) => {
-    if (arity === 0) {
-        return compileValue(toBody(body, 0), pinArities);
-    }
-    const args: string[] = [];
-    for (let i = 1; i <= arity; i++) {
-        args.push(`$${i}`);
-    }
-    const lets: Value[] = [];
-    const inner = extractLets(body, lets);
-    const maxIndex = arity + lets.length;
-    const fn = `function ${name} (${args.join(', ')}) {${lets
-        .map((_, i) => `\n    const $${i + arity + 1} = [0, -1, [-1]];`)
+    const fn = `function ${clean(name)} (${args.join(', ')}) {${lets
+        .map((lt) => `\n    const ${lt.name} = [0, -1, -1];`)
         .join('')}${lets
         .map(
-            (value, i) =>
-                `\n    setLocal($${i + arity + 1}, ${compileValue(
-                    toBody(value, maxIndex),
-                    pinArities,
-                )});`,
+            ({ name, value }, i) =>
+                `\n    setLocal(${name}, ${compileValue(value)});`,
         )
         .join('')}
-    return ${compileValue(toBody(inner, maxIndex), pinArities)};
+    return ${compileValue(body)};
 }`;
     const SIMPLE = true;
     if (SIMPLE) {
@@ -133,7 +120,41 @@ export const compile = (
     )})`;
 };
 
-const clean = (name: string) =>
+export const prepareLaw = (arity: number, body: Value) => {
+    const args: string[] = [];
+    for (let i = 1; i <= arity; i++) {
+        args.push(`$${i}`);
+    }
+    const lets: Value[] = [];
+    const inner = extractLets(body, lets);
+    const maxIndex = arity + lets.length;
+    const innerB = toBody(inner, maxIndex);
+    const letsB = lets.map((value, i) => ({
+        name: `$${arity + 1 + i}`,
+        value: toBody(value, maxIndex),
+    }));
+
+    return { args, lets: letsB, inner: innerB };
+};
+
+// export const compile = (name: string, arity: number, body: Value) => {
+//     if (arity === 0) {
+//         return compileValue(toBody(body, 0));
+//     }
+//     const args: string[] = [];
+//     for (let i = 1; i <= arity; i++) {
+//         args.push(`$${i}`);
+//     }
+//     const lets: Value[] = [];
+//     const inner = extractLets(body, lets);
+//     const maxIndex = arity + lets.length;
+//     const innerB = toBody(inner, maxIndex);
+//     const letsB = lets.map((value) => toBody(value, maxIndex));
+
+//     return compileLaw(name, args, letsB, innerB);
+// };
+
+export const clean = (name: string) =>
     name
         .replace(/!/g, '$bang')
         .replace(/\+/g, '$pl')
@@ -170,13 +191,6 @@ export const preparePins = (
 ) => {
     const npins: [NVal, Val][] = [];
     const changed = findPins(val, npins);
-    const pinArities: Record<string, number> = {
-        INC: 1,
-        PCASE: 5,
-        NCASE: 3,
-        LAW: 3,
-        PIN: 1,
-    };
     const pinHashes = npins.map(([nv, v]) => {
         if (nv.v[0] === NAT && OPNAMES[Number(nv.v[1])]) {
             return OPNAMES[Number(nv.v[1])];
@@ -184,7 +198,6 @@ export const preparePins = (
         const hash = objectHash(nv);
         if (nv.v[0] === LAW) {
             const name = nameFn(natToAscii(nv.v[1]), hash);
-            pinArities[name] = Number(nv.v[2]);
             return name;
         }
         return hash;
@@ -193,7 +206,6 @@ export const preparePins = (
     return {
         pins: npins.map((v) => v[0]),
         pinHashes,
-        pinArities,
         root: changed,
     };
 };
@@ -202,37 +214,130 @@ const nameFn = (name: string, hash: string) => {
     return (name ? clean(name) + '_' : '') + hash.slice(0, 4);
 };
 
-export const compileVal = (val: Val) => {
-    const { pins, pinHashes, pinArities, root } = preparePins(val, nameFn);
+export type Toplevels = Record<
+    string,
+    | {
+          type: 'law';
+          name: string;
+          args: string[];
+          lets: { name: string; value: Body }[];
+          body: Body;
+      }
+    | {
+          type: 'plain';
+          value: Body;
+      }
+>;
 
-    const toplevel: Record<string, string> = {};
+export const compileVal2 = (val: Val) => {
+    const { pins, pinHashes, root } = preparePins(val, nameFn);
+
+    const toplevel: Toplevels = {};
     const ctx: Ctx = {
         pins: pinHashes,
-        processLaw(name, arity, value) {
-            pinArities[name] = Number(arity);
-            toplevel[name] = compile(name, arity, value, pinArities);
+        processLaw(name, arity, body) {
+            const { args, lets, inner } = prepareLaw(arity, body);
+            toplevel[name] = { type: 'law', name, args, lets, body: inner };
         },
         nameFn,
     };
     pins.forEach((nv, i) => {
         const hash = pinHashes[i];
         if (nv.v[0] === LAW) {
-            toplevel[hash] = compile(
-                hash,
+            const { args, lets, inner } = prepareLaw(
                 Number(nv.v[2]),
                 oneVal(nv.v[3], ctx),
-                pinArities,
             );
+            toplevel[hash] = {
+                type: 'law',
+                name: hash,
+                args,
+                lets,
+                body: inner,
+            };
         } else {
-            toplevel[hash] = compileValue(oneVal(nv, ctx), pinArities);
+            toplevel[hash] = { type: 'plain', value: oneVal(nv, ctx) };
         }
     });
 
-    const main = oneVal(root, ctx);
-
-    toplevel.main = compileValue(main, pinArities);
+    toplevel.main = { type: 'plain', value: oneVal(root, ctx) };
 
     return toplevel;
+};
+
+export const compileVal = (val: Val) => {
+    const tops = compileVal2(val);
+
+    const toplevel: Record<string, string> = {};
+    Object.entries(tops).forEach(([hash, top]) => {
+        if (top.type === 'law') {
+            toplevel[hash] = compileLaw(top.name, top.args, top.lets, top.body);
+        } else {
+            toplevel[hash] = compileValue(top.value);
+        }
+    });
+
+    return toplevel;
+};
+
+export const compileMain = (tops: Toplevels) => {
+    const toplevel: Record<string, string> = {};
+    Object.entries(tops).forEach(([hash, top]) => {
+        if (top.type === 'law') {
+            toplevel[hash] = compileLaw(top.name, top.args, top.lets, top.body);
+        } else {
+            toplevel[hash] = compileValue(top.value);
+        }
+    });
+
+    const code = Object.entries(toplevel)
+        .map(([name, body]) => `PINS[${JSON.stringify(name)}] = ${body};`)
+        .join('\n\n');
+
+    return code;
+};
+
+export const runMain = (code: string): Value => {
+    new Function(`{asLaw, PINS, setLocal}`, code)({
+        asLaw,
+        PINS,
+        setLocal,
+    });
+
+    const jetPlus = asLaw(
+        (a: Value, b: Value) => {
+            a = force(a);
+            b = force(b);
+            if (typeof a !== 'bigint' && typeof a !== 'number') return 0;
+            if (typeof b !== 'bigint' && typeof b !== 'number') return 0;
+            if (typeof a === 'number' && typeof b === 'number') return a + b;
+            return BigInt(a) + BigInt(b);
+        },
+        0n,
+        0,
+    );
+
+    const jetMul = asLaw(
+        (a: Value, b: Value) => {
+            a = force(a);
+            b = force(b);
+            if (typeof a !== 'bigint' && typeof a !== 'number') return 0;
+            if (typeof b !== 'bigint' && typeof b !== 'number') return 0;
+            if (typeof a === 'number' && typeof b === 'number') return a * b;
+            return BigInt(a) * BigInt(b);
+        },
+        0n,
+        0,
+    );
+
+    Object.keys(PINS).forEach((k) => {
+        if (k.startsWith('$pl_') || k === '+') {
+            PINS[k] = jetPlus;
+        }
+    });
+    PINS.mul = jetMul;
+
+    return forceDeep(PINS.main);
 };
 
 export const jsjit: RT = {
@@ -240,10 +345,7 @@ export const jsjit: RT = {
         if (!v) throw new Error(`not about that live`);
     },
     run(v, saveTo?: string) {
-        const tops = compileVal(v);
-        const code = Object.entries(tops)
-            .map(([name, body]) => `PINS[${JSON.stringify(name)}] = ${body};`)
-            .join('\n\n');
+        const code = compileMain(compileVal2(v));
         if (saveTo) {
             writeFileSync(
                 saveTo,
@@ -253,32 +355,6 @@ export const jsjit: RT = {
             );
         }
 
-        new Function(`{asLaw, PINS, setLocal}`, code)({
-            asLaw,
-            PINS,
-            setLocal,
-        });
-
-        const jetPlus = asLaw(
-            (a: Value, b: Value) => {
-                a = force(a);
-                b = force(b);
-                if (typeof a !== 'bigint' && typeof a !== 'number') return 0;
-                if (typeof b !== 'bigint' && typeof b !== 'number') return 0;
-                if (typeof a === 'number' && typeof b === 'number')
-                    return a + b;
-                return BigInt(a) + BigInt(b);
-            },
-            0n,
-            0,
-        );
-
-        Object.keys(PINS).forEach((k) => {
-            if (k.startsWith('$pl_')) {
-                PINS[k] = jetPlus;
-            }
-        });
-
-        return show(forceDeep(PINS.main));
+        return show(runMain(code));
     },
 };

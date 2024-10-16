@@ -10,7 +10,7 @@ test('simple', () => {
     expect(res).toEqual('[1, 10]');
 });
 
-test.only('add', () => {
+test('add', () => {
     const main = getMain(`
 (defn + [a b] (NCASE b (fn [a] (INC (+ a b))) a))
 

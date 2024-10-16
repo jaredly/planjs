@@ -1,5 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { jsjit } from '../ps/normal/compile';
+import {
+    clean,
+    compileMain,
+    jsjit,
+    runMain,
+    Toplevels,
+} from '../ps/normal/compile';
 import { getMain } from '../ps/parseTop';
 import { plainBody, showNice } from '../pst';
 import { APP, LAW, NAT, PIN } from '../runtime/types';
@@ -82,6 +88,7 @@ import { IDRef, keyForLoc, RecNode } from 'j3/one-world/shared/nodes';
 import { fromRecNode } from './astToValue';
 import { fixGlobals, getExport, parse } from './format-parse';
 import { recNodeToText } from 'j3/one-world/client/cli/drawDocNode';
+import { forceDeep, show } from '../ps/normal/runtime';
 
 export const App = () => {
     const [text, setText] = useState(localStorage[key] || initialText);
@@ -129,6 +136,8 @@ export const App = () => {
 
             tops.forEach((top) => fixGlobals(top, globals));
 
+            const topValues: Toplevels = {};
+
             tops.forEach((top, i) => {
                 const parsed = parse(top);
                 if (!parsed.top) {
@@ -136,23 +145,35 @@ export const App = () => {
                         `cant parse I guess ${JSON.stringify(parsed.errors)}`,
                     );
                 }
-                const base =
+                let base =
                     (parsed.top.type === 'law' && parsed.top.name?.text) ||
                     `top${i}`;
-                let fns = 0;
+                // base = clean(base);
                 const body = fromRecNode(parsed.top, [], {
                     locHash(loc) {
-                        return loc.map((l) => `${l[0]}_${l[1]}`).join('__');
+                        return nameForLoc[keyForLoc(loc)];
+                        // return loc.map((l) => `${l[0]}_${l[1]}`).join('__');
                     },
-                    processLaw(name, args, lets, value) {
-                        fns++;
+                    lawNum: 0,
+                    processLaw(fns, name, args, lets, value) {
+                        let hash =
+                            fns === 0 ? base : `${base}_${fns}_${name ?? ''}`;
 
-                        if (fns === 0) {
-                            return base;
-                        }
-                        return `${base}_${name ?? ''}`;
+                        topValues[hash] = {
+                            type: 'law',
+                            name: hash,
+                            args,
+                            lets,
+                            body: value,
+                        };
+
+                        return hash;
                     },
                 });
+                if (parsed.top.type !== 'law') {
+                    topValues[base] = { type: 'plain', value: body };
+                }
+
                 const text = recNodeToText(
                     top,
                     parsed,
@@ -168,6 +189,25 @@ export const App = () => {
 
             let res = '';
             let slider = false;
+
+            const code = compileMain(topValues);
+            // res = code; // show(result);
+            try {
+                const result = runMain(code);
+                if (typeof result === 'function') {
+                    if (result.length === 0) {
+                        res += '\n\n' + show(forceDeep(result()));
+                    } else {
+                        res += '\n\n' + show(forceDeep(result(BigInt(v))));
+                        slider = true;
+                    }
+                }
+            } catch (e) {
+                const err = e as Error;
+
+                res += `\n\n${err.message}\n${err.stack}`;
+            }
+            // res += '\n\n' + show(result);
 
             // const main = getMain(builtins + text);
             // const full = aBlockToNodes(showMore(main));
@@ -186,7 +226,7 @@ export const App = () => {
             //     res = ran;
             // }
 
-            return { full, res, slider };
+            return { full, res, slider, code };
         } catch (err) {
             return {
                 full: (err as Error).message + '\n' + (err as Error).stack,
@@ -223,17 +263,32 @@ export const App = () => {
                     minWidth: 0,
                 }}
             >
-                {compiled.full}
+                <div style={{ display: 'flex' }}>
+                    <div style={{ flex: 1 }}>{compiled.full}</div>
+                    <div
+                        style={{
+                            flex: 1,
+                            minHeight: 0,
+                            overflow: 'auto',
+                            height: 500,
+                        }}
+                    >
+                        {compiled.code}
+                    </div>
+                </div>
                 <br />
                 {compiled.slider ? (
-                    <input
-                        type="range"
-                        min="0"
-                        max="200"
-                        style={{ width: 600 }}
-                        value={v}
-                        onChange={(e) => setV(+e.target.value)}
-                    />
+                    <>
+                        <input
+                            type="range"
+                            min="0"
+                            max="200"
+                            style={{ width: 600 }}
+                            value={v}
+                            onChange={(e) => setV(+e.target.value)}
+                        />
+                        {v}
+                    </>
                 ) : null}
                 <br />
                 {compiled.res}

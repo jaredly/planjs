@@ -24,18 +24,28 @@ const setup = (input: string) => {
     return { dest, memory };
 };
 
-const check = (input: string, output: string) => {
+const check = (input: string, output: string, monitor = false) => {
     const { dest, memory } = setup(input);
 
     const logs: string[] = [];
     const log = () => {
-        logs.push(prettyMValue(memory.heap[dest], memory));
+        if (monitor) {
+            logs.push(debugMem(memory));
+        }
     };
 
     log();
     for (let i = 0; i < 20 && memory.stack.length; i++) {
         step(memory);
         log();
+    }
+
+    if (memory.stack.length) {
+        if (monitor) {
+            expect(logs.join('\n\n')).toMatchSnapshot();
+        }
+        // console.log(logs);
+        throw new Error('why is there morestack - before deep');
     }
 
     let depth = 0;
@@ -47,10 +57,15 @@ const check = (input: string, output: string) => {
         }
     }
 
+    if (monitor) {
+        expect(logs.join('\n\n')).toMatchSnapshot();
+    }
+
     if (memory.stack.length) {
         // console.log(logs);
-        throw new Error('why is there morestack');
+        throw new Error('why is there morestack - after deep');
     }
+
     expect(prettyMValue(memory.heap[dest], memory)).toEqual(output);
 };
 
@@ -90,11 +105,11 @@ test('call a fn with two args', () => {
 });
 
 test('lets do an apppp', () => {
-    check(`(def main (1 2 3))`, '(1, 2, 3)');
+    check(`(def main (1 2 3))`, '(1 2 3)');
 });
 
 test('do we force deep', () => {
-    check(`(def main (1 (INC 1) (INC (INC 1))))`, '(1, 2, 3)');
+    check(`(def main (1 (INC 1) (INC (INC 1))))`, '(1 2 3)');
 });
 
 test('a little ncase as a treat', () => {
@@ -126,15 +141,35 @@ test('ncase with nonzero tho', () => {
 
 test('ncase with madness', () => {
     check(`(def main (NCASE 2 10 (1 1)))`, '2');
-    // const { dest, memory } = setup(`(def main (NCASE 2 INC (1 1)))`);
-    // expect('\n' + debugMem(memory)).toMatchSnapshot();
-    // step(memory);
-    // expect('\n' + debugMem(memory)).toMatchSnapshot();
-    // step(memory);
-    // expect('\n' + debugMem(memory)).toMatchSnapshot();
-    // step(memory);
-    // expect('\n' + debugMem(memory)).toMatchSnapshot();
-    // step(memory);
-    // expect('\n' + debugMem(memory)).toMatchSnapshot();
-    // expect(prettyMValue(memory.heap[dest], memory)).toEqual('2');
+});
+
+test(`nested fn`, () => {
+    check(`(def main ((fn [x] (x x)) 2))`, '(2 2)');
+});
+
+test(`nested fn w/ scope`, () => {
+    check(
+        `
+        (defn doot [z] ((fn [x] (z x)) 23))
+        (def main (doot 2))`,
+        '(2 23)',
+    );
+});
+
+test('can we please plus', () => {
+    check(
+        `
+    (defn + [a b] (NCASE b (fn [a_] (INC (+ a_ b))) a))
+    (def main (+ 2 3))
+        `,
+        '5',
+    );
+});
+
+test('now for pcase(n) if you pclease', () => {
+    check(`(def main (PCASE 0 1 2 3 0))`, '(3 0)');
+});
+
+test('now for pcase(a) if you pclease', () => {
+    check(`(def main (PCASE 7 8 9 10 (5 6)))`, '(9 5 6)', true);
 });

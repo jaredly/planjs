@@ -137,6 +137,13 @@ const unwrap = (memory: Memory, ref: Ref): null | [Ref, Ref[]] => {
     return [ref, []];
 };
 
+export const evaluated = (memory: Memory, ref: Ref): null | MValue => {
+    const v = getValue(memory, ref.v);
+    if (v.type === 'NAT') return v;
+    if (v.type === 'LAW') return v;
+    return v.ev ? v : null;
+};
+
 export const nat = (memory: Memory, ref: Ref): null | bigint => {
     const v = getValue(memory, ref.v);
     if (v.type === 'NAT') return v.v;
@@ -204,64 +211,121 @@ export const step = (memory: Memory) => {
                         case 0n: // LAW
                             throw new Error('op law not sup');
                         case 1n: // PCASE
-                            throw new Error('op pcase not sup');
-                        case 2n: // NCASE
-                            if (args.length === 3) {
-                                const n = nat(memory, args[2]);
-                                if (n == null) {
-                                    // needs eval
-                                    v.ev = false;
-                                    memory.stack.unshift(frame);
-                                    frame.step = 'x';
-                                    memory.stack.unshift({
-                                        at: args[2].v,
-                                    });
-                                    return;
-                                }
-                                if (n === 0n) {
-                                    memory.stack.unshift({ at: frame.at });
-                                    memory.heap[frame.at] = {
-                                        type: 'REF',
-                                        ref: args[0],
-                                    };
-                                } else {
+                            if (args.length !== 5) {
+                                return;
+                            }
+                            const [p, l, a, n, x] = args;
+                            const value = evaluated(memory, x);
+                            if (value == null) {
+                                // needs eval
+                                v.ev = false;
+                                memory.stack.unshift(frame);
+                                frame.step = 'x';
+                                memory.stack.unshift({ at: x.v });
+                                return;
+                            }
+
+                            switch (value.type) {
+                                // PIN
+                                // LAW
+                                case 'APP': {
                                     memory.stack.unshift({ at: frame.at });
                                     memory.heap[frame.at] = {
                                         type: 'APP',
                                         ev: false,
-                                        f: args[1],
-                                        x: {
+                                        f: {
                                             type: 'LOCAL',
                                             v: alloc(memory, {
-                                                type: 'NAT',
-                                                v: n - 1n,
+                                                type: 'APP',
+                                                ev: false,
+                                                f: a,
+                                                x: value.f,
                                             }),
                                         },
+                                        x: value.x,
                                     };
-                                }
-                                return;
-                            }
-                        case 3n: // INC
-                            if (args.length === 1) {
-                                const n = nat(memory, args[0]);
-                                if (n == null) {
-                                    // needs eval
-                                    v.ev = false;
-                                    memory.stack.unshift(frame);
-                                    frame.step = 'x';
-                                    memory.stack.unshift({
-                                        at: args[0].v,
-                                    });
                                     return;
                                 }
-                                memory.heap[frame.at] = {
-                                    type: 'NAT',
-                                    v: n + 1n,
-                                };
-                                return;
-                            } else {
+                                case 'NAT': {
+                                    memory.stack.unshift({ at: frame.at });
+                                    memory.heap[frame.at] = {
+                                        type: 'APP',
+                                        ev: false,
+                                        f: n,
+                                        // SOTPSHSOP this is wasteful, don't actually need to alloc
+                                        x: {
+                                            type: 'LOCAL',
+                                            v: alloc(memory, value),
+                                        },
+                                    };
+                                    return;
+                                }
+                            }
+
+                            return;
+                        case 2n: {
+                            // NCASE
+                            if (args.length !== 3) {
                                 return;
                             }
+                            const n = nat(memory, args[2]);
+                            if (n == null) {
+                                // needs eval
+                                v.ev = false;
+                                memory.stack.unshift(frame);
+                                frame.step = 'x';
+                                memory.stack.unshift({
+                                    at: args[2].v,
+                                });
+                                return;
+                            }
+
+                            // Now to do the ncasing
+                            if (n === 0n) {
+                                memory.stack.unshift({ at: frame.at });
+                                memory.heap[frame.at] = {
+                                    type: 'REF',
+                                    ref: args[0],
+                                };
+                            } else {
+                                memory.stack.unshift({ at: frame.at });
+                                memory.heap[frame.at] = {
+                                    type: 'APP',
+                                    ev: false,
+                                    f: args[1],
+                                    x: {
+                                        type: 'LOCAL',
+                                        v: alloc(memory, {
+                                            type: 'NAT',
+                                            v: n - 1n,
+                                        }),
+                                    },
+                                };
+                            }
+                            return;
+                        }
+                        case 3n: {
+                            // INC
+                            if (args.length !== 1) {
+                                return;
+                            }
+                            const n = nat(memory, args[0]);
+                            if (n == null) {
+                                // needs eval
+                                v.ev = false;
+                                memory.stack.unshift(frame);
+                                frame.step = 'x';
+                                memory.stack.unshift({
+                                    at: args[0].v,
+                                });
+                                return;
+                            }
+                            memory.heap[frame.at] = {
+                                type: 'NAT',
+                                v: n + 1n,
+                            };
+                            return;
+                        }
                         case 4n: // PIN
                             throw new Error('op pin not sup');
                     }
@@ -334,7 +398,7 @@ export const prettyMValue = (v: MValue, memory: Memory): string => {
             // const f = prettyMValue(memory.heap[v.f.v], memory);
             // const x = prettyMValue(, memory);
             // return `APP(${f}, ${x}${v.ev ? '' : ', lazy'})`;
-            const inner = args.map((v) => prettyMValue(v, memory)).join(', ');
+            const inner = args.map((v) => prettyMValue(v, memory)).join(' ');
             return v.ev ? `(${inner})` : `{${inner}}`;
         case 'NAT':
             return v.v + '';

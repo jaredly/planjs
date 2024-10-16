@@ -11,7 +11,7 @@ type Ref =
     | { type: 'PIN'; v: ptr }
     | { type: 'LOCAL'; v: ptr };
 
-type MValue =
+export type MValue =
     | { type: 'NAT'; v: bigint }
     | { type: 'APP'; f: Ref; x: Ref; ev: boolean }
     | { type: 'REF'; ref: Ref }
@@ -30,6 +30,14 @@ export type Memory = {
         }
     >;
 };
+
+export const showHeap = (heap: MValue[], i0 = 0) =>
+    heap
+        .map(
+            (x, i) =>
+                `${(i + i0).toString().padStart(2, ' ')}: ${showMValue(x)}`,
+        )
+        .join('\n');
 
 export const prepareLaw = (
     buffer: MValue[],
@@ -178,7 +186,7 @@ export const getValue = (memory: Memory, at: number): NotRef => {
     return v;
 };
 
-export const step = (memory: Memory) => {
+export const step = (memory: Memory, log?: (...v: any[]) => void) => {
     const frame = memory.stack[0];
     const v = getValue(memory, frame.at);
     switch (v.type) {
@@ -339,12 +347,24 @@ export const step = (memory: Memory) => {
             // because we take the law's heap
             // and we dump it onto the heap
             // and then ... like ... add a frame pointer ...
-            const law = memory.laws[natToAscii(fv.v)];
+            const name = natToAscii(fv.v);
+            const law = memory.laws[name];
             if (args.length !== law.arity) {
                 return; // not gonna
             }
 
+            if (log) {
+                log('at', frame, 'calling law', name, 'with args', args);
+            }
+
             const nvs = prepareLaw(law.buffer, args, memory.heap.length);
+            if (!nvs.length) throw new Error('metpy law??');
+
+            if (log) {
+                log('Heap to add:');
+                log(showHeap(nvs, memory.heap.length));
+            }
+
             memory.heap[frame.at] = nvs.pop()!;
             memory.heap.push(...nvs);
             memory.stack.push({ at: frame.at });
@@ -375,30 +395,54 @@ export const showRef = (v: Ref) => {
     }
 };
 
-const unwrapV = (r: Ref, memory: Memory, res: MValue[]) => {
+const unwrapV = (r: Ref, memory: Memory, res: string[]) => {
     const v = getValue(memory, r.v);
     if (v.type === 'APP' && v.ev) {
         unwrapV(v.f, memory, res);
-        res.push(getValue(memory, v.x.v));
+        res.push(prettyMValue(getValue(memory, v.x.v), memory));
     } else {
-        res.push(v);
+        if (r.type === 'PIN') {
+            if (v.type === 'NAT') {
+                switch (v.v) {
+                    case 0n: // LAW
+                        return res.push('LAW');
+                    case 1n:
+                        return res.push('PCASE');
+                    case 2n:
+                        return res.push('NCASE');
+                    case 3n:
+                        return res.push('INC');
+                    case 4n:
+                        return res.push('PIN');
+                }
+            }
+            res.push(`<${prettyMValue(v, memory)}>`);
+        } else {
+            res.push(prettyMValue(v, memory));
+        }
     }
 };
 
-export const prettyMValue = (v: MValue, memory: Memory): string => {
+export const prettyMValue = (
+    v: MValue,
+    memory: Memory,
+    trail: MValue[] = [],
+): string => {
+    if (trail.includes(v)) return `...recurse`;
+    trail = [...trail, v];
     switch (v.type) {
         case 'REF':
-            return prettyMValue(getValue(memory, v.ref.v), memory);
+            return prettyMValue(getValue(memory, v.ref.v), memory, trail);
         case 'LAW':
             return natToAscii(v.v);
         case 'APP':
-            const args: MValue[] = [];
+            const args: string[] = [];
             unwrapV(v.f, memory, args);
-            args.push(getValue(memory, v.x.v));
+            args.push(prettyMValue(getValue(memory, v.x.v), memory, trail));
             // const f = prettyMValue(memory.heap[v.f.v], memory);
             // const x = prettyMValue(, memory);
             // return `APP(${f}, ${x}${v.ev ? '' : ', lazy'})`;
-            const inner = args.map((v) => prettyMValue(v, memory)).join(' ');
+            const inner = args.join(' ');
             return v.ev ? `(${inner})` : `{${inner}}`;
         case 'NAT':
             return v.v + '';
@@ -406,6 +450,7 @@ export const prettyMValue = (v: MValue, memory: Memory): string => {
 };
 
 export const showMValue = (v: MValue) => {
+    if (!v) return `<MISSING>`;
     switch (v.type) {
         // case 'PIN':
         //     return `PIN(@${v.v})`;
@@ -571,10 +616,14 @@ export const stackMain = (tops: AST[]) => {
         });
 
         lets.forEach(({ value }, i) => {
-            mvalueFromAST(value, locals, ctx, i);
+            const res = mvalueFromAST(value, locals, ctx);
+            local.buffer[i] = { type: 'REF', ref: res };
         });
 
-        mvalueFromAST(value, locals, ctx);
+        const main = mvalueFromAST(value, locals, ctx);
+        if (main.type !== 'LOCAL' || main.v !== local.buffer.length - 1) {
+            local.buffer.push({ type: 'REF', ref: main });
+        }
 
         return local;
     };

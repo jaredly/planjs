@@ -3,8 +3,10 @@ import { readSeveral } from '../../web/readSeveral';
 import {
     deep,
     Memory,
+    MValue,
     prepareLaw,
     prettyMValue,
+    showHeap,
     showMValue,
     stackMain,
     step,
@@ -27,17 +29,52 @@ const setup = (input: string) => {
 const check = (input: string, output: string, monitor = false) => {
     const { dest, memory } = setup(input);
 
+    if (monitor) {
+        expect(
+            Object.entries(memory.laws)
+                .map(
+                    ([name, { buffer, arity }]) =>
+                        `LAW ${name} (arity ${arity})\n${showHeap(buffer)}`,
+                )
+                .join('\n\n'),
+        ).toMatchSnapshot();
+        expect('Initial Heap:\n' + showHeap(memory.heap)).toMatchSnapshot();
+    }
+
     const logs: string[] = [];
     const log = () => {
         if (monitor) {
             logs.push(debugMem(memory));
         }
     };
+    const slog = monitor
+        ? (...args: any[]) =>
+              logs.push(
+                  args
+                      .map((m) =>
+                          typeof m === 'string' ? m : JSON.stringify(m),
+                      )
+                      .join(' '),
+              )
+        : undefined;
 
     log();
     for (let i = 0; i < 20 && memory.stack.length; i++) {
-        step(memory);
+        try {
+            step(memory, slog);
+        } catch (err) {
+            expect(logs.join('\n\n')).toMatchSnapshot();
+            throw err;
+        }
+        if (monitor) {
+            logs.push(prettyMValue(memory.heap[dest], memory));
+        }
         log();
+    }
+
+    if (monitor) {
+        logs.push(`-- finished stack -------------------------------`);
+        logs.push(prettyMValue(memory.heap[dest], memory));
     }
 
     if (memory.stack.length) {
@@ -120,9 +157,7 @@ test('a little ncase as a treat', () => {
 
 const debugMem = (mem: Memory) => {
     return (
-        mem.heap
-            .map((x, i) => `${i.toString().padStart(2, ' ')}: ${showMValue(x)}`)
-            .join('\n') +
+        showHeap(mem.heap) +
         '\n---\n' +
         mem.stack
             .map(
@@ -171,5 +206,122 @@ test('now for pcase(n) if you pclease', () => {
 });
 
 test('now for pcase(a) if you pclease', () => {
-    check(`(def main (PCASE 7 8 9 10 (5 6)))`, '(9 5 6)', true);
+    check(`(def main (PCASE 7 8 9 10 (5 6)))`, '(9 5 6)');
+});
+
+test('lcase', () => {
+    check(
+        `
+(defn ! [v _] v)
+(defn lcase [lst nil cons]
+    (PCASE (! nil) (! nil) cons (! nil) lst))
+
+(def main (lcase (1 2) 0 5))
+        `,
+        '(5 1 2)',
+    );
+
+    check(
+        `
+(defn ! [v _] v)
+(defn lcase [lst nil cons]
+    (PCASE (! nil) (! nil) cons (! nil) lst))
+
+(def main (lcase 2 7 5))
+        `,
+        '7',
+    );
+});
+
+test('take', () => {
+    check(
+        `
+(defn ! [v _] v)
+(defn lcase [lst nil cons]
+    (PCASE (! nil) (! nil) cons (! nil) lst))
+(defn take [n lst]
+    (NCASE 0 (fn [n_]
+        (lcase lst
+            0
+            (fn [head tail] (head (take n_ tail)))))
+        n))
+
+(def main (take 3 (1 (2 (3 (4 5))))))
+        `,
+        '(1 (2 (3 0)))',
+    );
+});
+
+test('tinf', () => {
+    check(
+        `
+(defn ! [v _] v)
+(defn lcase [lst nil cons]
+    (PCASE (! nil) (! nil) cons (! nil) lst))
+(defn take [n lst]
+    (NCASE 0 (fn [n_]
+        (lcase lst
+            0
+            (fn [head tail] (head (take n_ tail)))))
+        n))
+
+(def main
+    (let inf (5 inf))
+    (take 3 inf))
+        `,
+        '(5 (5 (5 0)))',
+        true,
+    );
+});
+
+test.skip('annnnnd now like ... maybe fibonacci', () => {
+    check(
+        `
+(defn + [a b]
+    (NCASE b (fn [a] (INC (+ a b))) a))
+
+(defn ! [v _] v)
+
+(defn lcase [lst nil cons]
+    (PCASE
+        (! nil)
+        (! nil)
+        cons
+        (! nil)
+        lst))
+
+(defn zip [f one two]
+    (lcase one
+        0
+        (fn [a one]
+            (lcase two
+                0
+                (fn [b two]
+                    ((f a b) (zip f one two)))))))
+(defn drop [n lst]
+    (NCASE
+        lst
+        (fn [n_]
+            (lcase lst lst
+                (fn [a rest] (drop n_ rest))))
+        n))
+(defn take [n lst]
+    (NCASE 0 (fn [n_]
+        (lcase lst
+            0
+            (fn [head tail] (head (take n_ tail)))))
+        n))
+
+(defn fib [n]
+    (let self (0 (1 (zip + self offset))))
+    (let offset (drop 1 self))
+    (take n self))
+
+(defn inf [x] (let self (x self)) self)
+
+(defn main [n] (take 5 (inf 2)))
+
+        `,
+        `(2 2 2 2 2)`,
+    );
 });

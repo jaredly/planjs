@@ -10,6 +10,15 @@ lol I should just have tests like a real boy
 
 -
 
+weeee
+are getting remarkably far.
+it seems I might need to reify pins at some point.
+or not tho. I mean if you're apping a pin, we can know that.
+
+
+
+gotta figure out the infinite loop, and why it it is straneee
+
 
 
 

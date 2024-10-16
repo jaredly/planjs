@@ -14,8 +14,9 @@ type Ref =
 type MValue =
     | { type: 'NAT'; v: bigint }
     | { type: 'APP'; f: Ref; x: Ref; ev: boolean }
-    // | { type: 'REF'; ref: Ref }
+    | { type: 'REF'; ref: Ref }
     | { type: 'LAW'; v: bigint };
+type NotRef = Exclude<MValue, { type: 'REF' }>;
 
 export type Memory = {
     // top at 0
@@ -55,6 +56,8 @@ export const prepareLaw = (
             case 'NAT':
             case 'LAW':
                 return value;
+            case 'REF':
+                return { type: 'REF', ref: modRef(value.ref) };
             case 'APP':
                 return {
                     type: 'APP',
@@ -135,14 +138,14 @@ const unwrap = (memory: Memory, ref: Ref): null | [Ref, Ref[]] => {
 };
 
 export const nat = (memory: Memory, ref: Ref): null | bigint => {
-    const v = memory.heap[ref.v];
+    const v = getValue(memory, ref.v);
     if (v.type === 'NAT') return v.v;
     if (v.type === 'LAW') return 0n;
     return v.ev ? 0n : null;
 };
 
 const nextDeep = (memory: Memory, dest: number): number | void => {
-    const v = memory.heap[dest];
+    const v = getValue(memory, dest);
     if (v.type !== 'APP') return;
     if (!v.ev) return dest;
     return nextDeep(memory, v.f.v) ?? nextDeep(memory, v.x.v);
@@ -155,9 +158,22 @@ export const deep = (memory: Memory, dest: number) => {
     return true;
 };
 
+export const alloc = (memory: Memory, value: MValue) => {
+    memory.heap.push(value);
+    return memory.heap.length - 1;
+};
+
+export const getValue = (memory: Memory, at: number): NotRef => {
+    let v = memory.heap[at];
+    if (v.type === 'REF') {
+        return getValue(memory, v.ref.v);
+    }
+    return v;
+};
+
 export const step = (memory: Memory) => {
     const frame = memory.stack[0];
-    const v = memory.heap[frame.at];
+    const v = getValue(memory, frame.at);
     switch (v.type) {
         case 'NAT':
         case 'LAW':
@@ -177,7 +193,7 @@ export const step = (memory: Memory) => {
                 return;
             }
             const [f, args] = inner;
-            const fv = memory.heap[f.v];
+            const fv = getValue(memory, f.v);
             if (fv.type === 'APP') {
                 return;
             }
@@ -190,7 +206,41 @@ export const step = (memory: Memory) => {
                         case 1n: // PCASE
                             throw new Error('op pcase not sup');
                         case 2n: // NCASE
-                            throw new Error('op ncase not sup');
+                            if (args.length === 3) {
+                                const n = nat(memory, args[2]);
+                                if (n == null) {
+                                    // needs eval
+                                    v.ev = false;
+                                    memory.stack.unshift(frame);
+                                    frame.step = 'x';
+                                    memory.stack.unshift({
+                                        at: args[2].v,
+                                    });
+                                    return;
+                                }
+                                if (n === 0n) {
+                                    memory.stack.unshift({ at: frame.at });
+                                    memory.heap[frame.at] = {
+                                        type: 'REF',
+                                        ref: args[0],
+                                    };
+                                } else {
+                                    memory.stack.unshift({ at: frame.at });
+                                    memory.heap[frame.at] = {
+                                        type: 'APP',
+                                        ev: false,
+                                        f: args[1],
+                                        x: {
+                                            type: 'LOCAL',
+                                            v: alloc(memory, {
+                                                type: 'NAT',
+                                                v: n - 1n,
+                                            }),
+                                        },
+                                    };
+                                }
+                                return;
+                            }
                         case 3n: // INC
                             if (args.length === 1) {
                                 const n = nat(memory, args[0]);
@@ -262,10 +312,10 @@ export const showRef = (v: Ref) => {
 };
 
 const unwrapV = (r: Ref, memory: Memory, res: MValue[]) => {
-    const v = memory.heap[r.v];
+    const v = getValue(memory, r.v);
     if (v.type === 'APP' && v.ev) {
         unwrapV(v.f, memory, res);
-        res.push(memory.heap[v.x.v]);
+        res.push(getValue(memory, v.x.v));
     } else {
         res.push(v);
     }
@@ -273,16 +323,19 @@ const unwrapV = (r: Ref, memory: Memory, res: MValue[]) => {
 
 export const prettyMValue = (v: MValue, memory: Memory): string => {
     switch (v.type) {
+        case 'REF':
+            return prettyMValue(getValue(memory, v.ref.v), memory);
         case 'LAW':
             return natToAscii(v.v);
         case 'APP':
             const args: MValue[] = [];
             unwrapV(v.f, memory, args);
-            args.push(memory.heap[v.x.v]);
+            args.push(getValue(memory, v.x.v));
             // const f = prettyMValue(memory.heap[v.f.v], memory);
             // const x = prettyMValue(, memory);
             // return `APP(${f}, ${x}${v.ev ? '' : ', lazy'})`;
-            return `(${args.map((v) => prettyMValue(v, memory)).join(', ')})`;
+            const inner = args.map((v) => prettyMValue(v, memory)).join(', ');
+            return v.ev ? `(${inner})` : `{${inner}}`;
         case 'NAT':
             return v.v + '';
     }
@@ -292,12 +345,15 @@ export const showMValue = (v: MValue) => {
     switch (v.type) {
         // case 'PIN':
         //     return `PIN(@${v.v})`;
+        case 'REF':
+            return `REF(${showRef(v.ref)})`;
         case 'LAW':
             return `LAW(${natToAscii(v.v)})`;
         case 'APP':
-            return `APP(${showRef(v.f)}, ${showRef(v.x)}${
-                v.ev ? '' : ', lazy'
-            })`;
+            if (v.ev) {
+                return `APP(${showRef(v.f)}, ${showRef(v.x)})`;
+            }
+            return `APP{${showRef(v.f)}, ${showRef(v.x)}}`;
         case 'NAT':
             return v.v + '';
         // case 'STACK':

@@ -423,6 +423,19 @@ const unwrapV = (r: Ref, memory: Memory, res: string[]) => {
     }
 };
 
+const getList = (memory: Memory, ref: Ref, lst: bigint[]) => {
+    const v = getValue(memory, ref.v);
+    if (v.type === 'APP') {
+        const f = getValue(memory, v.f.v);
+        if (f.type === 'NAT') {
+            lst.push(f.v);
+            getList(memory, v.x, lst);
+        }
+    } else if (v.type === 'NAT') {
+        lst.push(v.v);
+    }
+};
+
 export const prettyMValue = (
     v: MValue,
     memory: Memory,
@@ -436,6 +449,13 @@ export const prettyMValue = (
         case 'LAW':
             return natToAscii(v.v);
         case 'APP':
+            const f = getValue(memory, v.f.v);
+            if (f.type === 'NAT') {
+                const lst: bigint[] = [f.v];
+                getList(memory, v.x, lst);
+                return `[${lst.join(' ')}]`;
+            }
+
             const args: string[] = [];
             unwrapV(v.f, memory, args);
             args.push(prettyMValue(getValue(memory, v.x.v), memory, trail));

@@ -179,7 +179,7 @@ test('ncase with madness', () => {
 });
 
 test(`nested fn`, () => {
-    check(`(def main ((fn [x] (x x)) 2))`, '(2 2)');
+    check(`(def main ((fn [x] (x x)) 2))`, '[2 2]');
 });
 
 test(`nested fn w/ scope`, () => {
@@ -187,7 +187,7 @@ test(`nested fn w/ scope`, () => {
         `
         (defn doot [z] ((fn [x] (z x)) 23))
         (def main (doot 2))`,
-        '(2 23)',
+        '[2 23]',
     );
 });
 
@@ -202,7 +202,7 @@ test('can we please plus', () => {
 });
 
 test('now for pcase(n) if you pclease', () => {
-    check(`(def main (PCASE 0 1 2 3 0))`, '(3 0)');
+    check(`(def main (PCASE 0 1 2 3 0))`, '[3 0]');
 });
 
 test('now for pcase(a) if you pclease', () => {
@@ -248,7 +248,7 @@ test('take', () => {
 
 (def main (take 3 (1 (2 (3 (4 5))))))
         `,
-        '(1 (2 (3 0)))',
+        '[1 2 3 0]',
     );
 });
 
@@ -269,7 +269,7 @@ test('tinf', () => {
     (let inf (5 inf))
     (take 3 inf))
         `,
-        '(5 (5 (5 0)))',
+        '[5 5 5 0]',
     );
 });
 
@@ -321,6 +321,6 @@ test('annnnnd now like ... maybe fibonacci', () => {
 (defn main [n] (fib 6))
 
         `,
-        `(0 (1 (1 (2 (3 (5 0))))))`,
+        `[0 1 1 2 3 5 0]`,
     );
 });

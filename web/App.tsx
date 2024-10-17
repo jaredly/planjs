@@ -80,7 +80,8 @@ export const aBlockToNodes = (block: ABlock) => {
 import { recNodeToText } from 'j3/one-world/client/cli/drawDocNode';
 import { keyForLoc } from 'j3/one-world/shared/nodes';
 import { forceDeep, show } from '../ps/normal/runtime';
-import { showMValue, stackMain } from '../ps/stepper/runtime';
+import { setupStepper } from '../ps/stepper/setupStepper';
+import { showMValue } from '../ps/stepper/showMValue';
 import { fromAST } from './astToValue';
 import { parse } from './format-parse';
 import { readSeveral } from './readSeveral';
@@ -153,7 +154,7 @@ export const App = () => {
                 );
             });
 
-            const stepper = stackMain(parseds);
+            const stepper = setupStepper(parseds);
 
             let res = '';
             let slider = false;

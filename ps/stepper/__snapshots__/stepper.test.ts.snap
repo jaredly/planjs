@@ -1,0 +1,19 @@
+// Bun Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`call a fn 1`] = `""`;
+
+exports[`call a fn with two args 1`] = `""`;
+
+exports[`call a fn with two args 2`] = `""`;
+
+exports[`nested fn w/ scope 1`] = `""`;
+
+exports[`can we please plus 1`] = `""`;
+
+exports[`lcase 1`] = `""`;
+
+exports[`take 1`] = `""`;
+
+exports[`tinf 1`] = `""`;
+
+exports[`annnnnd now like ... maybe fibonacci 1`] = `""`;

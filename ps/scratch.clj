@@ -55,8 +55,7 @@ Simple:
 
 (defn powers [base n]
    (let self (base (map (fn [x] (mul x base)) self)))
-   (take n self)
-)
+   (take n self))
 
 (defn fib [n]
     (let self (0 (1 (zip + self offset))))

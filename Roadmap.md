@@ -6,6 +6,11 @@ I want to:
 
 - [x] probably have codemirror help me out with editing idk
 - [ ] my j3 rendering isn't actually helping atm
+  - but it will in a second my folks
+
+
+- [ ] TASK: all stacker values must have a `loc` assigned to them.
+
 
 
 # Stepper runtime

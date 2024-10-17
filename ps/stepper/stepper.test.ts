@@ -1,20 +1,15 @@
 import { test, expect } from 'bun:test';
 import { readSeveral } from '../../web/readSeveral';
-import {
-    deep,
-    Memory,
-    MValue,
-    prepareLaw,
-    prettyMValue,
-    showHeap,
-    showMValue,
-    stackMain,
-    step,
-} from './runtime';
+import { deep, showHeap } from './runtime';
+import { Memory, MValue } from './types';
+import { prepareLaw } from './prepareLaw';
+import { setupStepper } from './setupStepper';
+import { prettyMValue, showMValue } from './showMValue';
+import { step } from './step';
 
 const setup = (input: string) => {
     const { parseds } = readSeveral(input);
-    const { memory } = stackMain(parseds);
+    const { memory } = setupStepper(parseds);
     if (!memory.laws.main) {
         throw new Error(`no main law`);
     }

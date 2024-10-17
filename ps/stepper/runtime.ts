@@ -452,8 +452,6 @@ export const prettyMValue = (
 export const showMValue = (v: MValue) => {
     if (!v) return `<MISSING>`;
     switch (v.type) {
-        // case 'PIN':
-        //     return `PIN(@${v.v})`;
         case 'REF':
             return `REF(${showRef(v.ref)})`;
         case 'LAW':
@@ -465,31 +463,8 @@ export const showMValue = (v: MValue) => {
             return `APP{${showRef(v.f)}, ${showRef(v.x)}}`;
         case 'NAT':
             return v.v + '';
-        // case 'STACK':
-        //     return `local@${v.idx}`;
     }
 };
-
-// const example: Memory = {
-//     stack: [{ ptr: 2 }],
-//     laws: {},
-//     heap: [
-//         { type: 'NAT', v: 1n },
-//         { type: 'NAT', v: 10n },
-//         { type: 'APP', f: 0, x: 1, ev: false },
-//     ],
-// };
-
-// const ex2: Memory = {
-//     stack: [{ ptr: 3 }],
-//     laws: {},
-//     heap: [
-//         { type: 'NAT', v: 3n },
-//         { type: 'PIN', v: 0 },
-//         { type: 'NAT', v: 10n },
-//         { type: 'APP', f: 1, x: 2, ev: false },
-//     ],
-// };
 
 type Ctx = {
     processLaw(

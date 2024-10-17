@@ -26,3 +26,54 @@ export type Memory = {
         }
     >;
 };
+
+export const cloneMemory = (mem: Memory) => {
+    const cloned = { ...mem };
+    cloned.laws = { ...cloned.laws };
+    cloned.stack = mem.stack.map((s) => ({ ...s }));
+    cloned.heap = cloned.heap
+        .slice()
+        .map((v) => (v.type === 'APP' ? { ...v } : v));
+    return cloned;
+};
+
+export const liveHeap = (memory: Memory, dest: number) => {
+    const seen: Record<number, true> = {};
+    const visit = (ptr: ptr) => {
+        if (seen[ptr]) return;
+        seen[ptr] = true;
+        const at = memory.heap[ptr];
+        switch (at.type) {
+            case 'APP':
+                visit(at.f.v);
+                visit(at.x.v);
+                return;
+            case 'REF':
+                visit(at.ref.v);
+                return;
+        }
+    };
+    visit(dest);
+
+    Object.values(memory.laws).forEach((law) => {
+        law.buffer.forEach((v) => {
+            if (v.type === 'REF') {
+                if (v.ref.type === 'PIN') {
+                    seen[v.ref.v] = true;
+                }
+            }
+            if (v.type === 'APP') {
+                if (v.f.type === 'PIN') {
+                    seen[v.f.v] = true;
+                }
+                if (v.x.type === 'PIN') {
+                    seen[v.x.v] = true;
+                }
+            }
+        });
+    });
+
+    return memory.heap
+        .map((value, i) => ({ value, i }))
+        .filter((v) => seen[v.i]);
+};

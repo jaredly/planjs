@@ -5,6 +5,8 @@ import { findFree } from '../../web/astToValue';
 import { AST } from '../../web/types';
 import { ptr, Ref, MValue, Memory } from './types';
 import { equal } from './showMValue';
+import { prepareLaw } from './prepareLaw';
+import { alloc } from './runtime';
 
 type Ctx = {
     processLaw(
@@ -20,7 +22,29 @@ type Ctx = {
     pin(v: MValue): Ref;
 };
 
-export const setupStepper = (tops: AST[]) => {
+export const addMain = (memory: Memory, args: MValue[]) => {
+    if (!memory.laws.main) {
+        throw new Error(`no main law`);
+    }
+    if (args.length !== memory.laws.main.arity) {
+        throw new Error(`wrong number of args to main`);
+    }
+
+    const main = prepareLaw(
+        memory.laws.main.buffer,
+        args.map((arg) => ({
+            type: 'LOCAL',
+            v: alloc(memory, arg),
+        })),
+        memory.heap.length,
+    );
+    memory.heap.push(...main);
+    const dest = memory.heap.length - 1;
+    memory.stack.push({ at: dest });
+    return dest;
+};
+
+export const setupStepper = (tops: AST[], mainArgs?: MValue[]) => {
     const memory: Memory = {
         heap: [],
         stack: [],
@@ -132,7 +156,9 @@ export const mvalueFromAST = (node: AST, locals: string[], ctx: Ctx): Ref => {
                         f: res,
                         x: mvalueFromAST(node.args[i], locals, ctx),
                         ev: false,
+                        loc: node.args[i].loc,
                     }),
+                    loc: node.loc,
                 };
             }
             return res;
@@ -142,11 +168,11 @@ export const mvalueFromAST = (node: AST, locals: string[], ctx: Ctx): Ref => {
         case 'nat':
             return {
                 type: 'LOCAL',
-                v: ctx.alloc({ type: 'NAT', v: node.number }),
+                v: ctx.alloc({ type: 'NAT', v: node.number, loc: node.loc }),
             };
         case 'builtin':
             const code = OPS[node.name as 'LAW'];
-            return ctx.pin({ type: 'NAT', v: BigInt(code) });
+            return ctx.pin({ type: 'NAT', v: BigInt(code), loc: node.loc });
         case 'law':
             const name = node.name?.text ?? 'self';
             const fnLocals = [
@@ -158,9 +184,6 @@ export const mvalueFromAST = (node: AST, locals: string[], ctx: Ctx): Ref => {
             findFree(node.body, fnLocals, extraArgs);
             // assume everything else is global
             extraArgs = extraArgs.filter((f) => locals.includes(f));
-            // const args = [name, ...extraArgs, ...node.args];
-            // const allLocals = args.concat(node.lets.map((l) => l.name));
-            // console.log('law', args, allLocals, extraArgs);
             let fn = ctx.lawNum.v++;
             let res: Ref = {
                 type: 'PIN',
@@ -169,12 +192,9 @@ export const mvalueFromAST = (node: AST, locals: string[], ctx: Ctx): Ref => {
                     node.name,
                     [...extraArgs, ...node.args],
                     node.lets,
-                    // node.lets.map((l) => ({
-                    //     name: l.name,
-                    //     value: mvalueFromAST(l.value, allLocals, ctx),
-                    // })),
                     node.body,
                 ),
+                loc: node.loc,
             };
             for (let i = 0; i < extraArgs.length; i++) {
                 const arg = extraArgs[i];
@@ -190,16 +210,16 @@ export const mvalueFromAST = (node: AST, locals: string[], ctx: Ctx): Ref => {
                             v: locals.indexOf(arg),
                         },
                         ev: false,
+                        loc: node.loc,
                     }),
+                    loc: node.loc,
                 };
             }
             return res;
         case 'local':
             const at = locals.indexOf(node.name);
             if (at === -1) {
-                // console.log('n', locals);
                 throw new Error(`unbound local ${node.name}`);
-                // return node.name;
             }
             return { type: 'STACK', v: at };
         case 'string':

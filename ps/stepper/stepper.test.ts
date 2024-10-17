@@ -3,21 +3,14 @@ import { readSeveral } from '../../web/readSeveral';
 import { deep, showHeap } from './runtime';
 import { Memory, MValue } from './types';
 import { prepareLaw } from './prepareLaw';
-import { setupStepper } from './setupStepper';
+import { addMain, setupStepper } from './setupStepper';
 import { prettyMValue, showMValue } from './showMValue';
 import { step } from './step';
 
 const setup = (input: string) => {
     const { parseds } = readSeveral(input);
-    const { memory } = setupStepper(parseds);
-    if (!memory.laws.main) {
-        throw new Error(`no main law`);
-    }
-    const main = prepareLaw(memory.laws.main.buffer, [], memory.heap.length);
-    memory.heap.push(...main);
-    const dest = memory.heap.length - 1;
-    memory.stack.push({ at: dest });
-
+    const { memory } = setupStepper(parseds.map((p) => p.top!));
+    const dest = addMain(memory, []);
     return { dest, memory };
 };
 
@@ -313,8 +306,7 @@ test('annnnnd now like ... maybe fibonacci', () => {
 
 (defn inf [x] (let self (x self)) self)
 
-(defn main [n] (fib 6))
-
+(def main (fib 6))
         `,
         `[0 1 1 2 3 5 0]`,
     );

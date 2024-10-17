@@ -80,15 +80,20 @@ export const aBlockToNodes = (block: ABlock) => {
 import { recNodeToText } from 'j3/one-world/client/cli/drawDocNode';
 import { keyForLoc } from 'j3/one-world/shared/nodes';
 import { forceDeep, show } from '../ps/normal/runtime';
-import { setupStepper } from '../ps/stepper/setupStepper';
-import { showMValue } from '../ps/stepper/showMValue';
+import { addMain, setupStepper } from '../ps/stepper/setupStepper';
+import { prettyMValue, showMValue } from '../ps/stepper/showMValue';
 import { fromAST } from './astToValue';
 import { parse } from './format-parse';
 import { readSeveral } from './readSeveral';
+import { cloneMemory, liveHeap } from '../ps/stepper/types';
+import { step } from '../ps/stepper/step';
+import { deep } from '../ps/stepper/runtime';
 
 export const App = () => {
     const [text, setText] = useState<string>(localStorage[key] || initialText);
-    const [v, setV] = useState(50);
+    const [v, setV] = useState(10);
+
+    const [stepN, setStep] = useState(100);
 
     useEffect(() => {
         localStorage[key] = text;
@@ -105,13 +110,8 @@ export const App = () => {
 
             const full: JSX.Element[] = [];
             tops.forEach((top, i) => {
-                const parsed = parse(top, globals);
-                if (!parsed.top) {
-                    throw new Error(
-                        `cant parse I guess ${JSON.stringify(parsed.errors)}`,
-                    );
-                }
-                // parseds.push(parsed.top);
+                const parsed = parseds[i];
+                if (!parsed.top) throw new Error('unreaachable');
                 let base =
                     (parsed.top.type === 'law' && parsed.top.name?.text) ||
                     `top${i}`;
@@ -154,30 +154,25 @@ export const App = () => {
                 );
             });
 
-            const stepper = setupStepper(parseds);
+            const stepper = setupStepper(parseds.map((p) => p.top!));
 
-            let res = '';
-            let slider = false;
+            let code = 'not now';
+            // try {
+            //     const result = runMain(code);
+            //     if (typeof result === 'function') {
+            //         if (result.length === 0) {
+            //             res += '\n\n' + show(forceDeep(result()));
+            //         } else {
+            //             res += '\n\n' + show(forceDeep(result(BigInt(v))));
+            //             slider = true;
+            //         }
+            //     }
+            // } catch (e) {
+            //     const err = e as Error;
+            //     res += `\n\n${err.message}\n${err.stack}`;
+            // }
 
-            const code = compileMain(topValues);
-            // res = code; // show(result);
-            try {
-                const result = runMain(code);
-                if (typeof result === 'function') {
-                    if (result.length === 0) {
-                        res += '\n\n' + show(forceDeep(result()));
-                    } else {
-                        res += '\n\n' + show(forceDeep(result(BigInt(v))));
-                        slider = true;
-                    }
-                }
-            } catch (e) {
-                const err = e as Error;
-
-                res += `\n\n${err.message}\n${err.stack}`;
-            }
-
-            return { full, res, slider, code, stepper };
+            return { full, code, stepper };
         } catch (err) {
             return {
                 full: (err as Error).message + '\n' + (err as Error).stack,
@@ -186,6 +181,40 @@ export const App = () => {
             };
         }
     }, [text, v]);
+
+    const lol = useMemo(() => {
+        const { stepper } = compiled;
+        if (!stepper) return;
+
+        let slider = false;
+        if (stepper.memory.laws.main.arity === 1) {
+            slider = true;
+        }
+
+        const memory = cloneMemory(stepper.memory);
+
+        const dest = addMain(
+            memory,
+            memory.laws.main.arity === 1 ? [{ type: 'NAT', v: BigInt(v) }] : [],
+        );
+
+        let i = 0;
+        for (; i < stepN && memory.stack.length; i++) {
+            step(memory);
+        }
+        while (i++ < stepN && deep(memory, dest)) {
+            for (; i < stepN && memory.stack.length; i++) {
+                step(memory);
+            }
+        }
+
+        return {
+            memory,
+            dest,
+            res: prettyMValue(memory.heap[dest], memory),
+            slider,
+        };
+    }, [compiled.stepper, stepN]);
 
     return (
         <div
@@ -206,8 +235,6 @@ export const App = () => {
             >
                 <CodeMirror
                     value={text}
-                    // height="200px"
-                    // extensions={[clojure()]}
                     options={{
                         mode: 'clojure',
                         theme: 'material-ocean',
@@ -216,23 +243,10 @@ export const App = () => {
                     onBeforeChange={(_, __, value) => {
                         console.log(value);
                         setText(value);
-                        //
                     }}
-                    onChange={(editor, data, v) => {
-                        console.log(v);
-                        // setText(v);
-                    }}
+                    onChange={(editor, data, v) => {}}
                 />
             </div>
-            {/* <textarea
-                style={{
-                    flex: 1,
-                    // width: 500,
-                    // height: 800,
-                }}
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-            /> */}
             <div
                 style={{
                     flex: 1,
@@ -242,9 +256,40 @@ export const App = () => {
                     minWidth: 0,
                 }}
             >
-                <div style={{ display: 'flex' }}>
+                {lol?.slider ? (
+                    <label>
+                        Input
+                        <input
+                            type="range"
+                            min="0"
+                            max="200"
+                            style={{ width: 600 }}
+                            value={v}
+                            onChange={(e) => setV(+e.target.value)}
+                        />
+                        {v}
+                    </label>
+                ) : null}
+                <br />
+                {lol ? (
+                    <label>
+                        Steps:
+                        <input
+                            type="range"
+                            min="0"
+                            max="2000"
+                            style={{ width: 600 }}
+                            value={stepN}
+                            onChange={(e) => setStep(+e.target.value)}
+                        />
+                        {stepN}
+                    </label>
+                ) : null}
+                <br />
+                {compiled.res}
+                {/* <div style={{ display: 'flex' }}>
                     <div style={{ flex: 1 }}>{compiled.full}</div>
-                    {/* <div
+                    <div
                         style={{
                             flex: 1,
                             minHeight: 0,
@@ -253,14 +298,15 @@ export const App = () => {
                         }}
                     >
                         {compiled.code}
-                    </div> */}
-                </div>
+                    </div>
+                </div> */}
                 <br />
-                {compiled.stepper ? (
+                {lol ? (
                     <>
+                        {lol.res}
                         <table>
                             <tbody>
-                                {compiled.stepper.memory.heap.map((v, i) => (
+                                {lol.memory.heap.map((v, i) => (
                                     <tr key={i}>
                                         <td>{i}</td>
                                         <td>{showMValue(v)}</td>
@@ -268,7 +314,7 @@ export const App = () => {
                                 ))}
                             </tbody>
                         </table>
-                        {Object.entries(compiled.stepper.memory.laws).map(
+                        {Object.entries(lol.memory.laws).map(
                             ([name, { buffer, arity }]) => (
                                 <div key={name} style={{ padding: 16 }}>
                                     <div>
@@ -287,27 +333,39 @@ export const App = () => {
                                 </div>
                             ),
                         )}
-                        {/* {JSON.stringify(compiled.stepper.laws, (_, v) =>
+                        {/* {JSON.stringify(lol.laws, (_, v) =>
                             typeof v === 'bigint' ? v + '' : v,
                         )} */}
                     </>
                 ) : null}
                 <br />
-                {compiled.slider ? (
-                    <>
-                        <input
-                            type="range"
-                            min="0"
-                            max="200"
-                            style={{ width: 600 }}
-                            value={v}
-                            onChange={(e) => setV(+e.target.value)}
-                        />
-                        {v}
-                    </>
+            </div>
+            <div
+                style={{
+                    flex: 1,
+                    whiteSpace: 'pre-wrap',
+                    padding: 16,
+                    fontFamily: 'monospace',
+                    minWidth: 0,
+                }}
+            >
+                Other here
+                {lol ? (
+                    <div>
+                        <table>
+                            <tbody>
+                                {liveHeap(lol.memory, lol.dest).map(
+                                    ({ value, i }) => (
+                                        <tr key={i}>
+                                            <td>{i}</td>
+                                            <td>{showMValue(value)}</td>
+                                        </tr>
+                                    ),
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
                 ) : null}
-                <br />
-                {compiled.res}
             </div>
         </div>
     );

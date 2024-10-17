@@ -11,7 +11,6 @@ export const step = (memory: Memory, log?: (...v: any[]) => void) => {
         case 'LAW':
             memory.stack.shift();
             return;
-        // throw new Error('idk')
         case 'APP': {
             if (frame.step === null) {
                 frame.step = 'f';

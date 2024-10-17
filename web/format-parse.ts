@@ -3,6 +3,8 @@ import { Id, IDRef, Loc, RecNode } from 'j3/one-world/shared/nodes';
 import { AST, Let } from './types';
 import { asciiToNat } from '../runtime/natToAscii';
 
+type MCTX = CTX & { globals: Record<string, IDRef> };
+
 export const getExport = (top: RecNode): Id<Loc> | void => {
     if (
         top.type === 'list' &&
@@ -15,7 +17,7 @@ export const getExport = (top: RecNode): Id<Loc> | void => {
     }
 };
 
-const parseLet = (ctx: CTX, node: RecNode): Let | null => {
+const letName = (node: RecNode): Id<Loc> | null => {
     if (
         node.type === 'list' &&
         node.items.length === 3 &&
@@ -23,7 +25,20 @@ const parseLet = (ctx: CTX, node: RecNode): Let | null => {
         node.items[0].text === 'let' &&
         node.items[1].type === 'id'
     ) {
-        const value = parseExpr(ctx, node.items[2]);
+        return node.items[1];
+    }
+    return null;
+};
+
+const parseLet = (ctx: MCTX, locals: string[], node: RecNode): Let | null => {
+    if (
+        node.type === 'list' &&
+        node.items.length === 3 &&
+        node.items[0].type === 'id' &&
+        node.items[0].text === 'let' &&
+        node.items[1].type === 'id'
+    ) {
+        const value = parseExpr(ctx, locals, node.items[2]);
         return value ? { name: node.items[1].text, value } : null;
     }
     ctx.errors.push({ loc: node.loc, text: 'bad let' });
@@ -32,7 +47,7 @@ const parseLet = (ctx: CTX, node: RecNode): Let | null => {
 
 const topForms: Record<
     string,
-    (ctx: CTX, loc: Loc, ...args: RecNode[]) => AST | void
+    (ctx: MCTX, loc: Loc, ...args: RecNode[]) => AST | void
 > = {
     // TODO: defs can have lets
     def(ctx, loc, name, ...body) {
@@ -41,11 +56,21 @@ const topForms: Record<
             return;
         }
         const lets: Let[] = [];
+
+        const locals: string[] = [];
         for (let i = 0; i < body.length - 1; i++) {
-            const l = parseLet(ctx, body[i]);
+            const ln = letName(body[i]);
+            if (ln) {
+                locals.push(ln.text);
+            }
+        }
+
+        for (let i = 0; i < body.length - 1; i++) {
+            const l = parseLet(ctx, locals, body[i]);
             if (l) lets.push(l);
         }
-        const expr = parseExpr(ctx, body[body.length - 1]);
+
+        const expr = parseExpr(ctx, locals, body[body.length - 1]);
         ctx.exports?.push({ kind: 'value', loc: name.loc });
         return expr
             ? {
@@ -70,7 +95,7 @@ const topForms: Record<
         };
 
         ctx.exports?.push({ kind: 'value', loc: name.loc });
-        const fn = forms.fn(ctx, loc, args, ...body);
+        const fn = forms.fn(ctx, [], loc, args, ...body);
         return fn?.type === 'law' ? { ...fn, name } : undefined;
     },
     // defmacro(ctx, loc, name, args, value) {
@@ -103,9 +128,9 @@ const getLoc = (l: Loc) => l[l.length - 1][1];
 
 const forms: Record<
     string,
-    (ctx: CTX, loc: Loc, ...args: RecNode[]) => AST | void
+    (ctx: MCTX, locals: string[], loc: Loc, ...args: RecNode[]) => AST | void
 > = {
-    fn(ctx, loc, args, ...body) {
+    fn(ctx, locals, loc, args, ...body) {
         if (
             !args ||
             !body.length ||
@@ -115,12 +140,19 @@ const forms: Record<
             ctx.errors.push({ loc, text: 'bad fn form' });
             return;
         }
+        locals = locals.slice();
+        args.items.forEach((arg) => locals.push((arg as Id<Loc>).text));
         const lets: Let[] = [];
         for (let i = 0; i < body.length - 1; i++) {
-            const l = parseLet(ctx, body[i]);
+            const ln = letName(body[i]);
+            if (ln) locals.push(ln.text);
+        }
+
+        for (let i = 0; i < body.length - 1; i++) {
+            const l = parseLet(ctx, locals, body[i]);
             if (l) lets.push(l);
         }
-        const expr = parseExpr(ctx, body[body.length - 1]);
+        const expr = parseExpr(ctx, locals, body[body.length - 1]);
         return expr
             ? {
                   type: 'law',
@@ -133,32 +165,32 @@ const forms: Record<
     },
 };
 
-export const fixGlobals = (node: RecNode, globals: Record<string, IDRef>) => {
-    switch (node.type) {
-        case 'list':
-        case 'record':
-        case 'array':
-            node.items.forEach((n) => fixGlobals(n, globals));
-            return;
-        case 'string':
-            node.templates.forEach((t) => fixGlobals(t.expr, globals));
-            return;
-        case 'table':
-            node.rows.forEach((r) => r.forEach((c) => fixGlobals(c, globals)));
-            return;
-        case 'id':
-            if (!node.ref && globals[node.text]) {
-                const ref = globals[node.text];
-                if (ref.type === 'toplevel' && ref.loc === node.loc) {
-                    return;
-                }
-                node.ref = globals[node.text];
-            }
-            return;
-    }
-};
+// export const fixGlobals = (node: RecNode, globals: Record<string, IDRef>) => {
+//     switch (node.type) {
+//         case 'list':
+//         case 'record':
+//         case 'array':
+//             node.items.forEach((n) => fixGlobals(n, globals));
+//             return;
+//         case 'string':
+//             node.templates.forEach((t) => fixGlobals(t.expr, globals));
+//             return;
+//         case 'table':
+//             node.rows.forEach((r) => r.forEach((c) => fixGlobals(c, globals)));
+//             return;
+//         case 'id':
+//             if (!node.ref && globals[node.text]) {
+//                 const ref = globals[node.text];
+//                 if (ref.type === 'toplevel' && ref.loc === node.loc) {
+//                     return;
+//                 }
+//                 node.ref = globals[node.text];
+//             }
+//             return;
+//     }
+// };
 
-const parseExpr = (ctx: CTX, value: RecNode): AST | void => {
+const parseExpr = (ctx: MCTX, locals: string[], value: RecNode): AST | void => {
     switch (value.type) {
         case 'string':
             if (value.templates.length) {
@@ -166,7 +198,7 @@ const parseExpr = (ctx: CTX, value: RecNode): AST | void => {
             }
             const templates = [];
             for (let item of value.templates) {
-                const expr = parseExpr(ctx, item.expr);
+                const expr = parseExpr(ctx, locals, item.expr);
                 if (!expr) return;
                 templates.push({ expr, suffix: item.suffix });
             }
@@ -179,7 +211,7 @@ const parseExpr = (ctx: CTX, value: RecNode): AST | void => {
         case 'array': {
             const items: AST[] = [];
             for (let item of value.items) {
-                const parsed = parseExpr(ctx, item);
+                const parsed = parseExpr(ctx, locals, item);
                 if (!parsed) return;
                 items.push(parsed);
             }
@@ -224,7 +256,28 @@ const parseExpr = (ctx: CTX, value: RecNode): AST | void => {
                 ctx.errors.push({ loc: value.loc, text: 'blank' });
                 return;
             }
-            return { type: 'local', loc: value.loc, name: value.text };
+            if (locals.includes(value.text)) {
+                return { type: 'local', loc: value.loc, name: value.text };
+            }
+            if (ctx.globals[value.text]) {
+                const ref = ctx.globals[value.text];
+                value.ref = ref;
+                if (ref.type === 'toplevel') {
+                    return { type: 'pin', ref: ref.loc, loc: value.loc };
+                }
+                if (ref.type === 'builtin') {
+                    return {
+                        type: 'builtin',
+                        loc: value.loc,
+                        name: value.text,
+                    };
+                }
+            }
+            ctx.errors.push({
+                loc: value.loc,
+                text: 'unbound local ' + value.text,
+            });
+            return;
 
         case 'list':
             if (
@@ -234,7 +287,12 @@ const parseExpr = (ctx: CTX, value: RecNode): AST | void => {
             ) {
                 const id = value.items[0].text;
                 if (forms[id]) {
-                    return forms[id](ctx, value.loc, ...value.items.slice(1));
+                    return forms[id](
+                        ctx,
+                        locals,
+                        value.loc,
+                        ...value.items.slice(1),
+                    );
                 }
             }
             if (value.items.length === 0) {
@@ -249,13 +307,13 @@ const parseExpr = (ctx: CTX, value: RecNode): AST | void => {
                 return { type: 'builtin', name: 'nil', loc: value.loc };
             }
             if (value.items.length > 1) {
-                const target = parseExpr(ctx, value.items[0]);
+                const target = parseExpr(ctx, locals, value.items[0]);
                 const args = value.items
                     .slice(1)
                     .filter(
                         (t) => !(t.type === 'id' && !t.ref && t.text === ''),
                     )
-                    .map((arg) => parseExpr(ctx, arg));
+                    .map((arg) => parseExpr(ctx, locals, arg));
                 return target && args.every((arg) => !!arg)
                     ? {
                           type: 'app',
@@ -265,12 +323,12 @@ const parseExpr = (ctx: CTX, value: RecNode): AST | void => {
                       }
                     : undefined;
             }
-            return parseExpr(ctx, value.items[0]);
+            return parseExpr(ctx, locals, value.items[0]);
     }
     throw new Error(`invalid expr`);
 };
 
-export const parseTop = (ctx: CTX, node: RecNode): AST | null => {
+export const parseTop = (ctx: MCTX, node: RecNode): AST | null => {
     if (node.type === 'rich-block') {
         return null;
     }
@@ -294,7 +352,7 @@ export const parseTop = (ctx: CTX, node: RecNode): AST | null => {
                 );
             }
         }
-        const expr = parseExpr(ctx, node);
+        const expr = parseExpr(ctx, [], node);
         return expr ?? null;
     } catch (err) {
         ctx.errors.push({ loc: node.loc, text: (err as Error).message });
@@ -302,8 +360,8 @@ export const parseTop = (ctx: CTX, node: RecNode): AST | null => {
     }
 };
 
-export const parse = (node: RecNode) => {
-    const ctx: CTX = {
+export const parse = (node: RecNode, globals: Record<string, IDRef>) => {
+    const ctx: MCTX = {
         layouts: {},
         styles: {},
         exports: [],
@@ -311,6 +369,7 @@ export const parse = (node: RecNode) => {
         tableHeaders: {},
         autocomplete: undefined,
         references: [],
+        globals,
         // cursor:,
     };
     const top = parseTop(ctx, node);

@@ -55,6 +55,12 @@ const service = Bun.serve({
         if (pathname.endsWith('/')) {
             pathname += 'index.html';
         }
+        if (pathname.startsWith('/@codemirror/')) {
+            pathname =
+                '../node_modules/codemirror/' +
+                pathname.slice('/@codemirror/'.length);
+        }
+        console.log(pathname);
         const file = Bun.file(join('./web', pathname));
         return new Response(file);
     },

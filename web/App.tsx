@@ -1,19 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-    clean,
-    compileMain,
-    jsjit,
-    runMain,
-    Toplevels,
-} from '../ps/normal/compile';
-import { getMain } from '../ps/parseTop';
-import { plainBody, showNice } from '../pst';
-import { APP, LAW, NAT, PIN } from '../runtime/types';
+import { compileMain, runMain, Toplevels } from '../ps/normal/compile';
+import { Controlled as CodeMirror } from 'react-codemirror2';
+// import { clojure } from '@nextjournal/lang-clojure';
+require('codemirror/mode/clojure/clojure');
 
-const builtins = `
-(defn + [a b]
-    (NCASE b (fn [a] (INC (+ a b))) a))
-`;
+// const builtins = `
+// (defn + [a b]
+//     (NCASE b (fn [a] (INC (+ a b))) a))
+// `;
 
 const initialText = `
 (defn ! [v _] v)
@@ -57,7 +51,7 @@ const initialText = `
 const key = 'plan:sandbox';
 
 import { ABlock } from 'j3/one-world/shared/ir/block-to-attributed-text';
-import { rgb, showMore } from './showMore';
+import { rgb } from './showMore';
 
 export const aBlockToNodes = (block: ABlock) => {
     return block.map((line, l) => (
@@ -83,17 +77,16 @@ export const aBlockToNodes = (block: ABlock) => {
     ));
 };
 
-import { reader } from 'j3/one-world/evaluators/boot-ex/reader';
-import { keyForLoc } from 'j3/one-world/shared/nodes';
-import { fromAST } from './astToValue';
-import { parse } from './format-parse';
 import { recNodeToText } from 'j3/one-world/client/cli/drawDocNode';
+import { keyForLoc } from 'j3/one-world/shared/nodes';
 import { forceDeep, show } from '../ps/normal/runtime';
 import { showMValue, stackMain } from '../ps/stepper/runtime';
+import { fromAST } from './astToValue';
+import { parse } from './format-parse';
 import { readSeveral } from './readSeveral';
 
 export const App = () => {
-    const [text, setText] = useState(localStorage[key] || initialText);
+    const [text, setText] = useState<string>(localStorage[key] || initialText);
     const [v, setV] = useState(50);
 
     useEffect(() => {
@@ -103,7 +96,7 @@ export const App = () => {
     const compiled = useMemo(() => {
         const maxWidth = 50;
         try {
-            let fullText = text.includes('+') ? builtins + text : text;
+            let fullText = text;
             const { tops, parseds, nameForLoc, globals } =
                 readSeveral(fullText);
 
@@ -111,7 +104,7 @@ export const App = () => {
 
             const full: JSX.Element[] = [];
             tops.forEach((top, i) => {
-                const parsed = parse(top);
+                const parsed = parse(top, globals);
                 if (!parsed.top) {
                     throw new Error(
                         `cant parse I guess ${JSON.stringify(parsed.errors)}`,
@@ -202,7 +195,35 @@ export const App = () => {
                 flexDirection: 'row',
             }}
         >
-            <textarea
+            <div
+                style={{
+                    // flex: 1,
+                    alignSelf: 'stretch',
+                    display: 'flex',
+                    flexDirection: 'column',
+                }}
+            >
+                <CodeMirror
+                    value={text}
+                    // height="200px"
+                    // extensions={[clojure()]}
+                    options={{
+                        mode: 'clojure',
+                        theme: 'material-ocean',
+                        lineNumbers: true,
+                    }}
+                    onBeforeChange={(_, __, value) => {
+                        console.log(value);
+                        setText(value);
+                        //
+                    }}
+                    onChange={(editor, data, v) => {
+                        console.log(v);
+                        // setText(v);
+                    }}
+                />
+            </div>
+            {/* <textarea
                 style={{
                     flex: 1,
                     // width: 500,
@@ -210,7 +231,7 @@ export const App = () => {
                 }}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-            />
+            /> */}
             <div
                 style={{
                     flex: 1,
@@ -222,7 +243,7 @@ export const App = () => {
             >
                 <div style={{ display: 'flex' }}>
                     <div style={{ flex: 1 }}>{compiled.full}</div>
-                    <div
+                    {/* <div
                         style={{
                             flex: 1,
                             minHeight: 0,
@@ -231,7 +252,7 @@ export const App = () => {
                         }}
                     >
                         {compiled.code}
-                    </div>
+                    </div> */}
                 </div>
                 <br />
                 {compiled.stepper ? (

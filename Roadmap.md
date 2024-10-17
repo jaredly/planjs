@@ -1,4 +1,13 @@
 
+# Stepper even mores
+
+Ok so now that fibonacci is owkring
+I want to:
+
+- [x] probably have codemirror help me out with editing idk
+- [ ] my j3 rendering isn't actually helping atm
+
+
 # Stepper runtime
 doing all the manual memory mumbojumbo
 fanciness

@@ -1,6 +1,6 @@
 import { readerMulti } from 'j3/one-world/evaluators/boot-ex/reader';
 import { RecNode, IDRef, keyForLoc } from 'j3/one-world/shared/nodes';
-import { getExport, fixGlobals, parse } from './format-parse';
+import { getExport, parse } from './format-parse';
 import { AST } from './types';
 
 export const readSeveral = (fullText: string) => {
@@ -35,12 +35,12 @@ export const readSeveral = (fullText: string) => {
         }
     });
 
-    tops.forEach((top) => fixGlobals(top, globals));
+    // tops.forEach((top) => fixGlobals(top, globals));
 
     const parseds: AST[] = [];
 
     tops.forEach((top, i) => {
-        const parsed = parse(top);
+        const parsed = parse(top, globals);
         if (!parsed.top) {
             throw new Error(
                 `cant parse I guess ${JSON.stringify(parsed.errors)}`,

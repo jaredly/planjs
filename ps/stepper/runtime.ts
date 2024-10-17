@@ -459,9 +459,6 @@ export const prettyMValue = (
             const args: string[] = [];
             unwrapV(v.f, memory, args);
             args.push(prettyMValue(getValue(memory, v.x.v), memory, trail));
-            // const f = prettyMValue(memory.heap[v.f.v], memory);
-            // const x = prettyMValue(, memory);
-            // return `APP(${f}, ${x}${v.ev ? '' : ', lazy'})`;
             const inner = args.join(' ');
             return v.ev ? `(${inner})` : `{${inner}}`;
         case 'NAT':
@@ -540,19 +537,11 @@ export const stackMain = (tops: AST[]) => {
 
     tops.forEach((top) => {
         if (top.type === 'law' && top.name) {
-            locPos[keyForLoc(top.name.loc)] = alloc({ type: 'NAT', v: 0n });
+            locPos[keyForLoc(top.name.loc)] = alloc({ type: 'NAT', v: 100n });
         }
     });
 
     const pins: { value: MValue; ptr: ptr }[] = [];
-    // const laws: Record<
-    //     string,
-    //     {
-    //         args: string[];
-    //         lets: { name: string; value: ptr }[];
-    //         value: ptr;
-    //     }
-    // > = {};
 
     const ctxFor = (buffer: MValue[], base: string, lawNum: { v: number }) => {
         const ctx: Ctx = {
@@ -561,8 +550,10 @@ export const stackMain = (tops: AST[]) => {
                 memory.laws[id] = allocLaw(id, args, lets, value, lawNum);
                 if (name) {
                     const ptr = locPos[keyForLoc(name.loc)];
-                    memory.heap[ptr] = { type: 'LAW', v: asciiToNat(id) };
-                    return ptr;
+                    if (memory.heap[ptr].type !== 'LAW') {
+                        memory.heap[ptr] = { type: 'LAW', v: asciiToNat(id) };
+                        return ptr;
+                    }
                 }
                 return alloc({ type: 'LAW', v: asciiToNat(id) });
             },
@@ -623,6 +614,7 @@ export const stackMain = (tops: AST[]) => {
 
         return mvalueFromAST(top, [], ctxFor(memory.heap, base, { v: 0 }));
     });
+
     return { memory, ptrs };
 };
 

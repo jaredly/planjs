@@ -224,7 +224,7 @@ const showLaw = (
 const nameFn = (name: string, hash: string) => name || hash; //`${name}#${hash.slice(0, 4)}`;
 
 export const showMore = (v: Val): ABlock => {
-    const { pins, pinHashes, pinArities, root } = preparePins(v, nameFn);
+    const { pins, pinHashes, root } = preparePins(v, nameFn);
     const toplevel: Record<string, ABlock> = {};
     const WIDTH = 50;
     let idx = 0;
@@ -233,7 +233,6 @@ export const showMore = (v: Val): ABlock => {
         pins: pinHashes,
         nameFn,
         processLaw(name, arity, value) {
-            pinArities[name] = Number(arity);
             addDeps(name, value);
             toplevel[name] = showLaw(name, arity, value, WIDTH, l);
         },

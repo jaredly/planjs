@@ -117,7 +117,7 @@ export const App = () => {
                         `cant parse I guess ${JSON.stringify(parsed.errors)}`,
                     );
                 }
-                parseds.push(parsed.top);
+                // parseds.push(parsed.top);
                 let base =
                     (parsed.top.type === 'law' && parsed.top.name?.text) ||
                     `top${i}`;

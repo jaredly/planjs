@@ -14,17 +14,17 @@ export const equal = (one: MValue, two: MValue) => {
 export const showRef = (v: Ref) => {
     switch (v.type) {
         case 'LOCAL':
-            return `local@${v.v}`;
+            return `@${v.v}`;
         case 'PIN':
             return `pin@${v.v}`;
         case 'STACK':
             return `stack#${v.v}`;
     }
 };
-const unwrapV = (r: Ref, memory: Memory, res: string[]) => {
+const unwrapV = (r: Ref, memory: Memory, res: string[], trail: MValue[]) => {
     const v = getValue(memory, r.v);
     if (v.type === 'APP' && v.ev) {
-        unwrapV(v.f, memory, res);
+        unwrapV(v.f, memory, res, trail);
         res.push(prettyMValue(getValue(memory, v.x.v), memory));
     } else {
         if (r.type === 'PIN') {
@@ -42,22 +42,32 @@ const unwrapV = (r: Ref, memory: Memory, res: string[]) => {
                         return res.push('PIN');
                 }
             }
-            res.push(`<${prettyMValue(v, memory)}>`);
+            res.push(`<${prettyMValue(v, memory, trail)}>`);
         } else {
-            res.push(prettyMValue(v, memory));
+            res.push(prettyMValue(v, memory, trail));
         }
     }
 };
-const getList = (memory: Memory, ref: Ref, lst: bigint[]) => {
+const getList = (
+    memory: Memory,
+    ref: Ref,
+    lst: (bigint | string)[],
+    trail: MValue[],
+) => {
     const v = getValue(memory, ref.v);
-    if (v.type === 'APP') {
+    if (v.type === 'APP' && v.f.type !== 'PIN') {
         const f = getValue(memory, v.f.v);
         if (f.type === 'NAT') {
             lst.push(f.v);
-            getList(memory, v.x, lst);
+            getList(memory, v.x, lst, trail);
+        } else {
+            lst.push(prettyMValue(f, memory, trail));
+            lst.push(prettyMValue(getValue(memory, v.x.v), memory, trail));
         }
     } else if (v.type === 'NAT') {
         lst.push(v.v);
+    } else {
+        lst.push(prettyMValue(v, memory, trail));
     }
 };
 
@@ -75,14 +85,14 @@ export const prettyMValue = (
             return natToAscii(v.v);
         case 'APP':
             const f = getValue(memory, v.f.v);
-            if (f.type === 'NAT') {
-                const lst: bigint[] = [f.v];
-                getList(memory, v.x, lst);
+            if (f.type === 'NAT' && v.f.type !== 'PIN') {
+                const lst: (bigint | string)[] = [f.v];
+                getList(memory, v.x, lst, trail);
                 return `[${lst.join(' ')}]`;
             }
 
             const args: string[] = [];
-            unwrapV(v.f, memory, args);
+            unwrapV(v.f, memory, args, trail);
             args.push(prettyMValue(getValue(memory, v.x.v), memory, trail));
             const inner = args.join(' ');
             return v.ev ? `(${inner})` : `{${inner}}`;

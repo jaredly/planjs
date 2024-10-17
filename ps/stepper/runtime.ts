@@ -76,7 +76,7 @@ export const unwrap = (memory: Memory, ref: Ref): null | [Ref, Ref[]] => {
     return [ref, []];
 };
 
-export const evaluated = (memory: Memory, ref: Ref): null | MValue => {
+export const evaluated = (memory: Memory, ref: Ref): null | NotRef => {
     const v = getValue(memory, ref.v);
     if (v.type === 'NAT') return v;
     if (v.type === 'LAW') return v;
@@ -100,7 +100,7 @@ const nextDeep = (memory: Memory, dest: number): number | void => {
 export const deep = (memory: Memory, dest: number) => {
     const next = nextDeep(memory, dest);
     if (next == null) return;
-    memory.stack.push({ at: next });
+    memory.stack.push({ at: next, reason: `next deep for ${dest}` });
     return true;
 };
 

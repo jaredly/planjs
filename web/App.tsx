@@ -207,11 +207,17 @@ export const App = () => {
                 step(memory);
             }
         }
+        let res = prettyMValue(memory.heap[dest], memory);
+        memory.stack.forEach((frame, i) => {
+            res += `\n Stack ${i} @${frame.at} ${frame.reason}: ${showMValue(
+                memory.heap[frame.at],
+            )} ${prettyMValue(memory.heap[frame.at], memory)}`;
+        });
 
         return {
             memory,
             dest,
-            res: prettyMValue(memory.heap[dest], memory),
+            res,
             slider,
         };
     }, [compiled.stepper, stepN]);
@@ -250,7 +256,8 @@ export const App = () => {
             <div
                 style={{
                     flex: 1,
-                    whiteSpace: 'pre-wrap',
+                    whiteSpace: 'pre',
+                    overflowX: 'auto',
                     padding: 16,
                     fontFamily: 'monospace',
                     minWidth: 0,

@@ -40,7 +40,7 @@ export const addMain = (memory: Memory, args: MValue[]) => {
     );
     memory.heap.push(...main);
     const dest = memory.heap.length - 1;
-    memory.stack.push({ at: dest });
+    memory.stack.push({ at: dest, reason: 'main' });
     return dest;
 };
 

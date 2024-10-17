@@ -5,6 +5,14 @@ import { prepareLaw } from './prepareLaw';
 
 export const step = (memory: Memory, log?: (...v: any[]) => void) => {
     const frame = memory.stack[0];
+    const next = (v: number, reason: string, selfToo = false) => {
+        if (memory.stack[0]?.at === v) {
+            // throw new Error('why already');
+            // if (!selfToo) return;
+        }
+        if (selfToo) memory.stack.unshift(frame);
+        memory.stack.unshift({ at: v, reason });
+    };
     const v = getValue(memory, frame.at);
     switch (v.type) {
         case 'NAT':
@@ -14,7 +22,8 @@ export const step = (memory: Memory, log?: (...v: any[]) => void) => {
         case 'APP': {
             if (frame.step === null) {
                 frame.step = 'f';
-                memory.stack.unshift({ at: v.f.v });
+                next(v.f.v, 'resolve APP f');
+                // memory.stack.unshift({ at: v.f.v });
                 return;
             }
             v.ev = true;
@@ -43,9 +52,10 @@ export const step = (memory: Memory, log?: (...v: any[]) => void) => {
                             if (value == null) {
                                 // needs eval
                                 v.ev = false;
-                                memory.stack.unshift(frame);
+                                // memory.stack.unshift(frame);
                                 frame.step = 'x';
-                                memory.stack.unshift({ at: x.v });
+                                next(x.v, 'PCASE value force', true);
+                                // memory.stack.unshift({ at: x.v });
                                 return;
                             }
 
@@ -53,7 +63,8 @@ export const step = (memory: Memory, log?: (...v: any[]) => void) => {
                                 // PIN
                                 // LAW
                                 case 'APP': {
-                                    memory.stack.unshift({ at: frame.at });
+                                    next(frame.at, 'PCASE app');
+                                    // memory.stack.unshift({ at: frame.at });
                                     memory.heap[frame.at] = {
                                         type: 'APP',
                                         ev: false,
@@ -71,7 +82,8 @@ export const step = (memory: Memory, log?: (...v: any[]) => void) => {
                                     return;
                                 }
                                 case 'NAT': {
-                                    memory.stack.unshift({ at: frame.at });
+                                    next(frame.at, 'PCASE nat');
+                                    // memory.stack.unshift({ at: frame.at });
                                     memory.heap[frame.at] = {
                                         type: 'APP',
                                         ev: false,
@@ -96,23 +108,26 @@ export const step = (memory: Memory, log?: (...v: any[]) => void) => {
                             if (n == null) {
                                 // needs eval
                                 v.ev = false;
-                                memory.stack.unshift(frame);
+                                // memory.stack.unshift(frame);
                                 frame.step = 'x';
-                                memory.stack.unshift({
-                                    at: args[2].v,
-                                });
+                                // memory.stack.unshift({
+                                //     at: args[2].v,
+                                // });
+                                next(args[2].v, 'NCASE arg force', true);
                                 return;
                             }
 
                             // Now to do the ncasing
                             if (n === 0n) {
-                                memory.stack.unshift({ at: frame.at });
+                                // memory.stack.unshift({ at: frame.at });
+                                next(frame.at, 'NCASE 0');
                                 memory.heap[frame.at] = {
                                     type: 'REF',
                                     ref: args[0],
                                 };
                             } else {
-                                memory.stack.unshift({ at: frame.at });
+                                next(frame.at, 'NCASE 1+n');
+                                // memory.stack.unshift({ at: frame.at });
                                 memory.heap[frame.at] = {
                                     type: 'APP',
                                     ev: false,
@@ -137,11 +152,12 @@ export const step = (memory: Memory, log?: (...v: any[]) => void) => {
                             if (n == null) {
                                 // needs eval
                                 v.ev = false;
-                                memory.stack.unshift(frame);
+                                // memory.stack.unshift(frame);
                                 frame.step = 'x';
-                                memory.stack.unshift({
-                                    at: args[0].v,
-                                });
+                                // memory.stack.unshift({
+                                //     at: args[0].v,
+                                // });
+                                next(args[0].v, 'INC force arg', true);
                                 return;
                             }
                             memory.heap[frame.at] = {
@@ -164,6 +180,34 @@ export const step = (memory: Memory, log?: (...v: any[]) => void) => {
             // and we dump it onto the heap
             // and then ... like ... add a frame pointer ...
             const name = natToAscii(fv.v);
+
+            if (name === '+' && args.length === 2) {
+                const a = evaluated(memory, args[0]);
+                if (a == null) {
+                    // needs eval
+                    v.ev = false;
+                    // memory.stack.unshift(frame);
+                    frame.step = 'x';
+                    // memory.stack.unshift({ at: args[0].v });
+                    next(args[0].v, '+ jet a', true);
+                    return;
+                }
+                const b = evaluated(memory, args[1]);
+                if (b == null) {
+                    // needs eval
+                    v.ev = false;
+                    // memory.stack.unshift(frame);
+                    frame.step = 'x';
+                    // memory.stack.unshift({ at: args[1].v });
+                    next(args[1].v, '+ jet b', true);
+                    return;
+                }
+                if (a.type === 'NAT' && b.type === 'NAT') {
+                    memory.heap[frame.at] = { type: 'NAT', v: a.v + b.v };
+                    return;
+                }
+            }
+
             const law = memory.laws[name];
             if (args.length !== law.arity) {
                 return; // not gonna
@@ -183,7 +227,7 @@ export const step = (memory: Memory, log?: (...v: any[]) => void) => {
 
             memory.heap[frame.at] = nvs.pop()!;
             memory.heap.push(...nvs);
-            memory.stack.push({ at: frame.at });
+            memory.stack.unshift({ at: frame.at, reason: `law ${name} body` });
             return;
         }
     }

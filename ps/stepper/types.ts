@@ -16,7 +16,7 @@ export type NotRef = Exclude<MValue, { type: 'REF' }>;
 
 export type Memory = {
     // top at 0
-    stack: { at: ptr; step?: 'f' | 'x' }[];
+    stack: { at: ptr; step?: 'f' | 'x'; reason: string }[];
     heap: MValue[];
     laws: Record<
         string,
